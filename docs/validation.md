@@ -9,6 +9,7 @@ Validated in the cloud development environment on 2026-10-12.
 | Browser integration (`npm run test:e2e`) | 10 passed |
 | Release language | CJK scan passed; browser checks `en-CA` and USD formatting |
 | Frontend production build | Passed |
+| Vercel-style frontend build | Passed with an HTTPS API origin; missing or loopback origin rejected |
 | TypeScript check | Passed |
 | API and web Docker images | Built successfully with TLS verification enabled |
 | Docker Compose | Both services healthy; web-to-API proxy returns the actual experiment data |
@@ -44,3 +45,9 @@ remain in the implementation roadmap.
 
 The environment configuration draft contains tested installation and startup
 instructions. Publishing that configuration is a separate product action.
+
+A Vercel CLI temporary deployment was attempted from `apps/web`, but no hosted
+deployment was created. The CLI had no authenticated account in this workspace,
+and the login request failed through the workspace network. Neon was not
+connected: the current API accepts SQLite URLs only and no Neon project
+connector is available in this task.

@@ -43,7 +43,7 @@ jobs:
         working-directory: apps/web
         run: |
           npm run typecheck
-          npm run build
+          VERCEL=1 API_BASE_URL=https://api.example.com npm run build
       - name: Install Chromium
         working-directory: apps/web
         run: npx playwright install --with-deps chromium

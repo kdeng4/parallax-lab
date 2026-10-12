@@ -12,6 +12,8 @@ design to live data, cloud model execution, distributed workers and production
 operations. [Architecture](docs/architecture.md) and the
 [API contract](docs/api-contract.md) document the current boundaries.
 See [validation results](docs/validation.md) for the checks executed in this environment.
+See [deployment requirements](docs/deployment.md) before connecting a Vercel
+frontend to a hosted API.
 
 ## What is implemented
 

@@ -68,6 +68,13 @@ def test_closed_quote_tolerance_is_explicit(factory):
     assert feeds.quotes(['AAPL'], allow_closed=True)['AAPL']['price'] == 100
 
 
+def test_fresh_preopening_quotes_cannot_value_or_fill_a_regular_session_study(factory):
+    feeds = factory(lambda _: httpx.Response(200, json=[quote(as_of=NOW.replace(hour=13, minute=29)), quote('spy', as_of=NOW.replace(hour=13, minute=29))]))
+    feeds.test_clock[0] = NOW.replace(hour=13, minute=35).timestamp()
+    with pytest.raises(FeedError):
+        feeds.quotes(['AAPL'])
+
+
 def test_news_deduplicated_future_article_excluded_and_empty_news_valid(factory):
     rows = [{'url': 'https://example.com/story', 'title': 'Observed', 'description': 'Shared input', 'tickers': ['aapl'], 'publishedDate': NOW.isoformat()},
             {'url': 'https://example.com/story', 'title': 'Duplicate', 'tickers': ['aapl'], 'publishedDate': NOW.isoformat()},

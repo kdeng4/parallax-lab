@@ -53,7 +53,7 @@ export function PercentChart({ series: source }: { series: PercentSeries[] }) {
         setHover(nearest);
       }} onPointerLeave={() => setHover(null)} />
     </svg>
-    <label className="sr-only" htmlFor={id}>Inspect performance time</label><input id={id} className="chart-accessible-slider" type="range" min={0} max={count} value={active} onChange={event => setHover(Number(event.target.value))}
+    <label className="sr-only" htmlFor={id}>Inspect performance time</label><input id={id} className="percent-chart-slider" type="range" min={0} max={count} value={active} onChange={event => setHover(Number(event.target.value))}
       aria-valuetext={`${reference[active] ? when(reference[active].date) : ''} UTC. ${visible.map(item => `${item.name}: ${percent(item.points[active]?.value ?? 0)}`).join(', ')}`} />
     <div className="percent-readout" aria-live="polite"><span>{reference[active] ? when(reference[active].date) : ''} UTC</span>
       {visible.map(item => <span key={item.id}>{item.name} <strong>{percent(item.points[active]?.value ?? 0)}</strong></span>)}</div>

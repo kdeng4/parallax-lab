@@ -1,5 +1,43 @@
 # Parallax Lab · Validation history
 
+## Owner authorization, Git connection and cleanup — 2026-10-12
+
+These results supersede the deployment audit's seed and Git-link status below.
+
+- GitHub `kdeng4/parallax-lab` is permanently connected to Vercel. Dashboard
+  confirmation and the linked-project API agree. Pushing main commit `703da57d`
+  automatically produced production deployment `dpl_AstMwSgdaapd4xZeJMdnaUQYKzAP`,
+  source `git`, state READY, on the custom domain.
+- Security code commit `6cafebf6`: CI run
+  [38285745642](https://github.com/kdeng4/parallax-lab/actions/runs/38285745642)
+  passed: 112 backend tests, 93.38% branch-inclusive coverage, 18 signed-token
+  authorization/proxy tests, 11 browser workflows, and both container builds.
+  Main documentation commit `703da57d` also passed CI run `38286719974`.
+- Both production and preview now have zero experiments and zero audit events.
+  Only the known baseline and deployment-audit records were deleted. SQL
+  readback confirmed both immutable-record triggers are enabled after cleanup.
+- Both deployments now use `parallax_app_v2`, with minimal SELECT/INSERT grants.
+  INSERT privileges were revoked from `parallax_runtime` on both branches;
+  SQL confirmed that old role cannot create experiments or audit events.
+- Hosted seeding is unconditionally disabled, and local seeding defaults off.
+  The isolated audit branch was already empty. CI seed fixtures remain isolated.
+- Protected preview and custom-domain production HTTP checks return PostgreSQL
+  health and `{ "experiments": [] }`. `/api/session` returns `canEdit: false`,
+  reason `not_configured`, with private/no-store caching while activation awaits
+  approval. Unknown identities cannot obtain editor permission from page access.
+- Editor allowlist contains only the verified Vercel owner account. No passwords,
+  identity assertions, owner database credentials or runtime tokens are public.
+- Cloudflare Access is not yet provisioned. Automatic approval review blocked
+  creating the proposed organization as an account-level security change needing
+  explicit approval. Until activation, the hosted app is read only for everyone,
+  including the owner. Owner sign-in/creation has therefore **not** been verified
+  on the live app. Cryptographic authorization behavior is covered by CI using
+  generated test keys; those keys are never deployed.
+- Dashboard login and Git connection were completed in the authenticated browser.
+  Opening the hosted preview then hit a browser credential-protection error, so
+  live HTTP checks used the Vercel connector. No live browser workflow success is
+  claimed. The Git connection screenshot is retained as operational evidence.
+
 ## Deployment audit — 2026-10-12
 
 The results below supersede the original local-only hosting assumptions.

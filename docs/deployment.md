@@ -156,3 +156,11 @@ The operator can remove specifically identified seed/audit rows in one locked
 transaction, briefly disabling only the two immutable-record triggers and
 re-enabling them before commit. Do not remove actual research records or weaken
 runtime privileges. Verify both environments remain empty after a cold start.
+
+
+Cleanup and automatic-deployment checks completed on 2026-10-12: both production
+and preview contain zero experiments and zero events. Both immutable triggers
+are enabled. The old role has no INSERT privileges, and the new runtime role has
+only the required SELECT/INSERT grants. Main commit `703da57d` automatically
+created READY production deployment `dpl_AstMwSgdaapd4xZeJMdnaUQYKzAP` with
+`source: git`; custom-domain health and empty listing both returned HTTP 200.

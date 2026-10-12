@@ -34,7 +34,7 @@ test('licensed projection renders all agent lines and a distinguishable market b
   await chart.getByRole('button', { name: 'Research One' }).click();
   await expect(chart.locator('svg path')).toHaveCount(2);
   await page.getByLabel('Inspect performance time').fill('0');
-  await expect(chart.getByText('0.00%', { exact: true })).toHaveCount(2);
+  await expect(chart.locator('.percent-readout').getByText('0.00%', { exact: true })).toHaveCount(2);
   await page.screenshot({ path: 'test-results/public-chart.png', fullPage: true });
 });
 

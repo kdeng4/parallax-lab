@@ -61,7 +61,7 @@ test('each pair plots a percent line, SPY is dashed, shared news can be inspecte
   await expect(chart.getByText('+2.00%', { exact: true })).toBeVisible();
   await expect(chart.getByText('-1.00%', { exact: true })).toBeVisible();
   await chart.getByLabel('Inspect performance time').fill('0');
-  await expect(chart.getByText('0.00%', { exact: true })).toHaveCount(3);
+  await expect(chart.locator('.percent-readout').getByText('0.00%', { exact: true })).toHaveCount(3);
   await panel.getByRole('button', { name: 'Inspect shared news and prices' }).click();
   await expect(panel.getByRole('heading', { name: 'Exactly what every agent could see' })).toBeVisible();
   await expect(panel.getByRole('link', { name: 'Common observed article' })).toHaveAttribute('href', 'https://example.com/article');

@@ -43,3 +43,21 @@ gh api repos/kdeng4/parallax-lab/rules/branches/main
 
 Official references: [import rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository#importing-a-ruleset)
 and [ruleset API](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset).
+
+## Repository Website
+
+The production public dashboard is `https://parallax.pdeng.pp.ua`. README links
+use this DNS-configured domain. The repository About Website still points to the
+older Vercel alias; the current connector has no repository-metadata update tool,
+and credential protection blocks browser editing.
+
+The repository owner can edit the About Website field to this production URL.
+With an authenticated GitHub CLI account that has Administration write permission:
+
+```bash
+gh api --method PATCH repos/kdeng4/parallax-lab \
+  -f homepage=https://parallax.pdeng.pp.ua
+```
+
+This changes repository metadata, not DNS or deployment routing. It must be
+applied separately; editing README does not update the About field.

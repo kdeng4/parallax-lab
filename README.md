@@ -2,6 +2,9 @@
 
 **A paper-trading research workbench for controlled model and strategy experiments.**
 
+Open the [public dashboard](https://parallax.pdeng.pp.ua). This DNS-configured
+domain follows the latest production deployment.
+
 Parallax Lab runs independent trading algorithms against the same immutable market
 snapshot, records every decision and fill, and makes results comparable in one
 minimal interface: **real published market data, local baseline algorithms,

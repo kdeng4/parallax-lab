@@ -1,6 +1,6 @@
-# Architecture
+# Parallax Lab · Architecture
 
-Patrick begins as a modular research application with a functioning event-based
+Parallax Lab begins as a modular research application with a functioning event-based
 replay engine. The boundaries below are logical modules in milestone 1; NATS,
 live market ingestion, and distributed workers are planned, not active services.
 

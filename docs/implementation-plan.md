@@ -1,4 +1,4 @@
-# Patrick Intelligent Trading Research Platform · Implementation Plan
+# Parallax Lab · Implementation Plan
 
 ## Product goal
 

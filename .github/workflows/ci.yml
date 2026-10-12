@@ -1,11 +1,11 @@
-name: Validate Patrick
+name: Validate Parallax Lab
 on:
   push:
   pull_request:
 permissions:
   contents: read
 concurrency:
-  group: patrick-${{ github.workflow }}-${{ github.ref }}
+  group: parallax-lab-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   engine:
@@ -23,7 +23,7 @@ jobs:
         run: uv sync --locked --group dev
       - name: Validate accounting, causality, persistence and HTTP API with coverage
         working-directory: apps/api
-        run: uv run --frozen --group dev pytest --cov=patrick --cov-branch --cov-report=term-missing --cov-fail-under=90
+        run: uv run --frozen --group dev pytest --cov=parallax_lab --cov-branch --cov-report=term-missing --cov-fail-under=90
   web:
     runs-on: ubuntu-latest
     steps:

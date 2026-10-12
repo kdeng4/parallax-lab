@@ -1,4 +1,4 @@
-# Vercel frontend deployment
+# Parallax Lab · Vercel frontend deployment
 
 The Next.js frontend is in `apps/web`. Its requests to `/api/v1/*` are proxied
 to the FastAPI service through a Next.js rewrite. A Vercel deployment needs a

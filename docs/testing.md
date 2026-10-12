@@ -1,9 +1,9 @@
-# Testing Patrick
+# Testing Parallax Lab
 
 Run the backend gate from `apps/api`:
 
 ```bash
-uv run --frozen --group dev pytest --cov=patrick --cov-branch --cov-report=term-missing --cov-fail-under=90
+uv run --frozen --group dev pytest --cov=parallax_lab --cov-branch --cov-report=term-missing --cov-fail-under=90
 ```
 
 Run the browser gate from `apps/web` after stopping the development launcher:

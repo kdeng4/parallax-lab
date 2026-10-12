@@ -12,6 +12,8 @@ test('seeded dashboard renders persisted results without browser errors', async 
   page.on('pageerror', (error) => errors.push(error.message));
   await openWorkbench(page);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en-CA');
+  await expect(page).toHaveTitle('Parallax Lab — Trading research, measured.');
+  await expect(page.getByRole('link', { name: 'Parallax Lab home' })).toBeVisible();
   await expect(page.getByText('US$100,000', { exact: true })).toBeVisible();
   const response = await request.get('/api/v1/experiments');
   expect(response.ok()).toBeTruthy();

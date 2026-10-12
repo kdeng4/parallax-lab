@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const databaseDirectory = mkdtempSync(join(tmpdir(), 'patrick-e2e-'));
+const databaseDirectory = mkdtempSync(join(tmpdir(), 'parallax-lab-e2e-'));
 
 export default defineConfig({
   testDir: './e2e',
@@ -24,10 +24,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'uv run --frozen uvicorn patrick.main:app --host 127.0.0.1 --port 8010',
+      command: 'uv run --frozen uvicorn parallax_lab.main:app --host 127.0.0.1 --port 8010',
       cwd: '../api',
       url: 'http://127.0.0.1:8010/api/v1/health',
-      env: { PATRICK_DATABASE_URL: `sqlite:///${join(databaseDirectory, 'research.db')}`, PATRICK_SEED_DEMO: '1' },
+      env: { PARALLAX_DATABASE_URL: `sqlite:///${join(databaseDirectory, 'research.db')}`, PARALLAX_SEED_DEMO: '1' },
       timeout: 60_000,
       reuseExistingServer: false,
     },

@@ -6,7 +6,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from patrick.providers import (
+from parallax_lab.providers import (
     Candle,
     Decision,
     DecisionInput,

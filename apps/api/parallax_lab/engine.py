@@ -150,6 +150,7 @@ def run_experiment(request: ExperimentInput, experiment_id: str | None = None) -
     events: list[dict] = []
 
     def identifier(key: str) -> str:
+        # Historical UUID namespace is part of the replay identity; keep it stable.
         return str(uuid5(NAMESPACE_URL, f"patrick:{experiment_id}:{key}"))
 
     states = [RunState(identifier(f"run:{model}:{strategy}"), model, strategies[strategy], Account(D(str(request.initial_cash))))
@@ -219,7 +220,7 @@ def run_experiment(request: ExperimentInput, experiment_id: str | None = None) -
             "strategy_name": strategies[request.strategy_ids[0]].name if len(request.strategy_ids) == 1 else "Multiple strategies",
             "data_hash": data_hash(candles), "costs": {"fee_bps": FEE_BPS, "slippage_bps": SLIPPAGE_BPS},
             "runs": runs, "candles": [c.as_dict() for c in candles], "events": events,
-            "metadata": {"engine_version": ENGINE_VERSION, "python_version": sys.version.split()[0], "request": request.model_dump(), "dataset": {"source": "synthetic", "generator": "patrick-v1", "hash": data_hash(candles)},
+            "metadata": {"engine_version": ENGINE_VERSION, "python_version": sys.version.split()[0], "request": request.model_dump(), "dataset": {"source": "synthetic", "generator": "parallax-lab-v1", "hash": data_hash(candles)},
                          "strategies": [strategies[s].model_dump() for s in request.strategy_ids],
                          "models": [{**MODELS[m], "implementation_version": ENGINE_VERSION} for m in request.model_ids],
                          "execution": {"signal": "bar_close", "fill": "next_bar_open", "position_mode": "long_only", "leverage": 1,

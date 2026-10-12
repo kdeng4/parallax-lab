@@ -1,11 +1,11 @@
-name: patrick
+name: parallax-lab
 services:
   api:
     build:
       context: .
       dockerfile: infra/api.Dockerfile
     environment:
-      PATRICK_DATABASE_URL: sqlite:////app/.data/patrick.db
+      PARALLAX_DATABASE_URL: sqlite:////app/.data/parallax-lab.db
     volumes:
       - paper-data:/app/.data
     ports:

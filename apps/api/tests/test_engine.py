@@ -3,11 +3,11 @@ from decimal import Decimal
 
 import pytest
 
-from patrick import engine
-from patrick.engine import Account, decide, metrics, run_experiment
-from patrick.market import data_hash, generate_candles
-from patrick.schemas import ExperimentInput
-from patrick.strategy import load_strategies
+from parallax_lab import engine
+from parallax_lab.engine import Account, decide, metrics, run_experiment
+from parallax_lab.market import data_hash, generate_candles
+from parallax_lab.schemas import ExperimentInput
+from parallax_lab.strategy import load_strategies
 
 
 def test_dataset_is_deterministic_immutable_and_prefix_stable():

@@ -1,8 +1,8 @@
-# Patrick
+# Parallax Lab
 
 **A paper-trading research workbench for controlled model and strategy experiments.**
 
-Patrick runs independent trading algorithms against the same immutable market
+Parallax Lab runs independent trading algorithms against the same immutable market
 snapshot, records every decision and fill, and makes results comparable in one
 minimal interface. The first milestone is a working local research application:
 **synthetic market data, local baseline algorithms, simulated funds.**
@@ -50,7 +50,7 @@ Alternatively, use two terminals:
 
 ```bash
 cd apps/api
-uv run --frozen uvicorn patrick.main:app --host 127.0.0.1 --port 8000 --reload
+uv run --frozen uvicorn parallax_lab.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ```bash
@@ -58,10 +58,11 @@ cd apps/web
 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Data lives in `apps/api/.data/patrick.db`, which is ignored by Git. Back up that
-file with SQLite's backup mechanism when retaining research work. Set
-`PATRICK_DATABASE_URL` before starting the API to use another local database.
-Set `PATRICK_SEED_DEMO=0` to skip the initial example. The frontend's
+New installations store data in `apps/api/.data/parallax-lab.db`, which is ignored
+by Git. Existing local databases are retained when the new database is absent.
+Back up the file with SQLite's backup mechanism when retaining research work. Set
+`PARALLAX_DATABASE_URL` before starting the API to use another local database.
+Set `PARALLAX_SEED_DEMO=0` to skip the initial example. The frontend's
 `API_BASE_URL` defaults to the API's loopback address. Next.js embeds rewrite
 destinations at build time; set the value **before** a production build.
 
@@ -74,7 +75,7 @@ loading the root `.env`.
 
 ```bash
 cd apps/api
-uv run --frozen --group dev pytest --cov=patrick --cov-branch --cov-report=term-missing --cov-fail-under=90
+uv run --frozen --group dev pytest --cov=parallax_lab --cov-branch --cov-report=term-missing --cov-fail-under=90
 ```
 
 ```bash

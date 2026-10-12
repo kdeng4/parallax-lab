@@ -3,6 +3,7 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -18,13 +19,25 @@ from .strategy import load_strategies
 DEMO_ID = "d93865f4-352f-5a14-b80d-e0453b018540"
 
 
+def default_database_url() -> str:
+    current = Path(".data/parallax-lab.db")
+    legacy = Path(".data/patrick.db")
+    # Keep reading an existing local database after the product rename.
+    path = legacy if legacy.exists() and not current.exists() else current
+    return f"sqlite:///./{path.as_posix()}"
+
+
 def create_app(database_url: str | None = None, seed_demo: bool | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        store = Store(database_url or os.getenv("PATRICK_DATABASE_URL", "sqlite:///./.data/patrick.db"))
+        store = Store(database_url or os.getenv("PARALLAX_DATABASE_URL") or
+                      os.getenv("PATRICK_DATABASE_URL") or default_database_url())
         store.initialize()
         app.state.store = store
-        should_seed = seed_demo if seed_demo is not None else os.getenv("PATRICK_SEED_DEMO", "1") == "1"
+        seed_setting = os.getenv("PARALLAX_SEED_DEMO")
+        if seed_setting is None:
+            seed_setting = os.getenv("PATRICK_SEED_DEMO", "1")
+        should_seed = seed_demo if seed_demo is not None else seed_setting == "1"
         if should_seed and not store.has(DEMO_ID):
             try:
                 store.save(run_experiment(ExperimentInput(name="Opening bell · baseline study"), DEMO_ID))
@@ -34,7 +47,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
                     raise
         yield
 
-    app = FastAPI(title="Patrick · paper-trading research", version="0.1.0", lifespan=lifespan,
+    app = FastAPI(title="Parallax Lab · paper-trading research", version="0.1.0", lifespan=lifespan,
                   description="Single-user research API. Synthetic data and local baselines; no live orders.")
 
     @app.exception_handler(RequestValidationError)
@@ -102,7 +115,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
     def export(experiment_id: UUID):
         detail = get_or_404(experiment_id)
         return Response(json.dumps(detail, ensure_ascii=False, indent=2, allow_nan=False), media_type="application/json",
-                        headers={"Content-Disposition": f'attachment; filename="patrick-{experiment_id}.json"'})
+                        headers={"Content-Disposition": f'attachment; filename="parallax-lab-{experiment_id}.json"'})
 
     return app
 

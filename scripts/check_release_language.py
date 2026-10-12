@@ -1,4 +1,4 @@
-"""Reject CJK text in release-facing files before publishing Patrick."""
+"""Reject CJK text in release-facing files before publishing Parallax Lab."""
 
 from __future__ import annotations
 

@@ -30,7 +30,7 @@ def main() -> int:
         signal.signal(sig, lambda *_args: sys.exit(0))
     try:
         processes.append(subprocess.Popen(
-            ['uv', 'run', '--frozen', 'uvicorn', 'patrick.main:app',
+            ['uv', 'run', '--frozen', 'uvicorn', 'parallax_lab.main:app',
              '--host', '127.0.0.1', '--port', '8000', '--reload'],
             cwd=ROOT / 'apps/api', start_new_session=True,
         ))
@@ -38,7 +38,7 @@ def main() -> int:
             ['npm', 'run', 'dev', '--', '--hostname', '127.0.0.1', '--port', '3000'],
             cwd=ROOT / 'apps/web', start_new_session=True,
         ))
-        print('Patrick: frontend port 3000 · API port 8000 · paper / synthetic only', flush=True)
+        print('Parallax Lab: frontend port 3000 · API port 8000 · paper / synthetic only', flush=True)
         while all(process.poll() is None for process in processes):
             time.sleep(0.5)
         return next((p.returncode for p in processes if p.returncode is not None), 1)

@@ -1,4 +1,4 @@
-# Patrick · milestone 1 API contract
+# Parallax Lab · Milestone 1 API contract
 
 All endpoints live below `/api/v1` on the FastAPI service. The Next.js app
 proxies `/api/v1/*` to `API_BASE_URL` (default `http://127.0.0.1:8000`).

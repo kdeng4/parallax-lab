@@ -5,8 +5,8 @@ from decimal import Decimal
 
 from hypothesis import given, settings, strategies as st
 
-from patrick.engine import Account, FEE_BPS, SLIPPAGE_BPS, run_experiment
-from patrick.schemas import ExperimentInput
+from parallax_lab.engine import Account, FEE_BPS, SLIPPAGE_BPS, run_experiment
+from parallax_lab.schemas import ExperimentInput
 
 
 D = Decimal

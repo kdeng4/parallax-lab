@@ -1,4 +1,4 @@
-# Patrick API
+# Parallax Lab API
 
 A working local paper-trading research API built with FastAPI, Pydantic, Python
 3.12, and SQLite. The deterministic replay uses synthetic one-minute OHLCV data
@@ -11,17 +11,21 @@ From this directory, with Python 3.12 and uv installed:
 
 ```sh
 UV_CACHE_DIR=/workspace/.cache/uv uv sync --frozen --group dev
-UV_CACHE_DIR=/workspace/.cache/uv uv run uvicorn patrick.main:app --host 127.0.0.1 --port 8000
+UV_CACHE_DIR=/workspace/.cache/uv uv run uvicorn parallax_lab.main:app --host 127.0.0.1 --port 8000
 ```
 
 Outside the cloud workspace, `UV_CACHE_DIR` can be omitted. API docs are at
 `http://127.0.0.1:8000/docs`. The Next.js application proxies `/api/v1/*` to this
 service. Use `--host 0.0.0.0` only when container networking requires it.
 
-`PATRICK_DATABASE_URL` defaults to `sqlite:///./.data/patrick.db` (relative to
-the process working directory). An absolute path uses four slashes, e.g.
-`sqlite:////tmp/patrick.db`. Only SQLite is supported in this milestone.
-`PATRICK_SEED_DEMO=0` disables the first-start example. The default seed has a
+`PARALLAX_DATABASE_URL` defaults to `sqlite:///./.data/parallax-lab.db` (relative
+to the process working directory). If an existing `.data/patrick.db` is present
+and the new file is absent, the service continues using that database. An
+absolute path uses four slashes, e.g. `sqlite:////tmp/parallax-lab.db`.
+`PATRICK_DATABASE_URL` remains a fallback for existing local configurations;
+the new variable takes precedence. Only SQLite is supported in this milestone.
+`PARALLAX_SEED_DEMO=0` disables the first-start example. `PATRICK_SEED_DEMO`
+remains a fallback. The default seed has a
 stable ID, so restarting never duplicates it. A database file contains all runs
 and audit records; protect it as application data and use SQLite's backup API
 for a consistent backup while the service is running.
@@ -81,7 +85,7 @@ microsecond precision, limit, and offset. Shared market events have a null run I
 
 ## Optional provider adapters
 
-`patrick.providers` implements the OpenAI Responses API and Anthropic Messages
+`parallax_lab.providers` implements the OpenAI Responses API and Anthropic Messages
 API with strict validated target allocations, confidence, and concise summaries.
 Provider snapshots validate coherent OHLC prices, require timezone-aware candle
 timestamps, normalize them to UTC, and enforce strictly increasing unique instants.
@@ -93,7 +97,7 @@ belong in a strategy, export, or browser. No live provider calls were used for
 validation, so real provider compatibility remains an integration check.
 
 ```python
-from patrick.providers import ProviderConfig, build_provider
+from parallax_lab.providers import ProviderConfig, build_provider
 
 provider = build_provider(ProviderConfig(
     provider="openai",

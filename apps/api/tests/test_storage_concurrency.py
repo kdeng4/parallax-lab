@@ -6,9 +6,9 @@ from threading import Barrier
 
 import pytest
 
-from patrick.engine import run_experiment
-from patrick.schemas import ExperimentInput
-from patrick.storage import Store
+from parallax_lab.engine import run_experiment
+from parallax_lab.schemas import ExperimentInput
+from parallax_lab.storage import Store
 
 
 @pytest.fixture

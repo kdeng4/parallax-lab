@@ -14,10 +14,24 @@ Hosted replay requires real Tiingo adjusted daily candles. Synthetic data is an 
 
 Required baseline model IDs: `momentum`, `mean-reversion`, `buy-and-hold`.
 Required strategy IDs: `balanced`, `conservative`, `responsive`.
-Cloud adapters are separate from baseline IDs and must not fake provider results.
+When configured, the catalogue includes `openai:gpt-6-luna`, `openai:gpt-6.1-sol`
+and `openai:gpt-6-astra`, plus private `openai` call-limit metadata. Provider IDs
+are server-allowlisted; request credentials are never accepted. Catalogue symbols
+come from the saved owner watchlist, rather than a closed five-symbol enum.
 
 ## GET /market/overview
-Returns `stocks`, `macro`, server `as_of`, refresh cadence and indicator methodology. Each series includes its provider, observation date, retrieval time, next refresh eligibility and status. Missing values are null; stale values are explicitly labelled. No arbitrary symbol, URL or force-refresh parameter is supported. See [market-data audit](market-data-audit-2026-10-12.md) for rate budgets and calculation conventions. Responses are private/no-store; provider data is shared in the server-side database cache.
+Returns `stocks`, `macro`, server `as_of`, refresh cadence and indicator methodology. Each series includes its provider, observation date, retrieval time, next refresh eligibility and status. Missing values are null; stale values are explicitly labelled. Stocks follow the saved watchlist. No arbitrary URL or force-refresh parameter is supported. See [market-data audit](market-data-audit-2026-10-12.md) for rate budgets and calculation conventions. Responses are private/no-store. Starter Tiingo content remains transient; only entitled content may use the durable cache.
+
+## GET /market/watchlist
+Returns `{ "symbols": ["SPY", "TSLA"], "max_symbols": 10 }`.
+
+## POST /market/watchlist
+Input `{ "symbols": ["tsla", "AMD", "BRK.B"] }`. Saves normalized ticker preferences
+only and returns the saved list. One to ten unique stock/ETF symbols are allowed;
+syntax is validated and periods become provider dashes. Provider coverage is checked
+by the next real data request, not invented from the symbol format. This write uses
+the same owner authentication, CSRF protection and body limit as experiment creation.
+Saving does not fetch market data or reset provider quotas.
 
 ## GET /experiments
 `{"experiments":[ExperimentSummary]}` newest first.
@@ -27,8 +41,17 @@ Input: `{"name":"Optional user label","comparison":"models","model_ids":["moment
 `comparison` is `models` (one strategy, 2+ models) or `strategies` (one model, 2+ strategies).
 Validate IDs, maximum participants, bounds, duplicate IDs, and a single varied factor.
 Bounds: daily bars 60–252 (local fixtures 60–1440), local fixture seed 0–4294967295, cash 100–100000000 USD, name 1–100 trimmed characters (omit or null for automatic name).
-Runs a bounded deterministic replay synchronously, persists atomically, returns
+Runs a bounded replay synchronously, persists atomically, returns
 ExperimentDetail with HTTP 201. Uses the shared market cache; if needed, reserves quota and fetches a completed daily snapshot. Missing/stale/insufficient history returns 503 and creates no experiment.
+
+Cloud input adds `decision_checkpoints` (1–3, default 2). The product of cloud
+participants, strategies and checkpoints must not exceed six requests. All
+participants share the checkpoint schedule after warm-up; daily equity is still
+marked every bar. Cloud requests reserve durable quotas before I/O, perform no
+automatic retries, and have a 60-second inference deadline. Quota/cooldown rejection
+returns 429; provider failure returns 503 without saving a partial experiment.
+Attempted calls may still be billed. Export metadata records checkpoint indices,
+actual response model IDs and token usage; historical LLM replay is not prospective.
 
 ExperimentSummary: `{"id":"uuid","name":"Morning momentum study","comparison":"models","symbol":"SPY","status":"completed","created_at":"...","data_source":"tiingo","seed":null,"bars":180,"initial_cash":100000,"participants":3,"best_return_pct":1.2}`.
 

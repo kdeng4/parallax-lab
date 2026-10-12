@@ -11,6 +11,8 @@ function statusLabel(status: string) {
   if (status === 'key_missing') return 'Connection required';
   if (status === 'offline') return 'Feed disabled';
   if (status === 'refreshing') return 'Updating';
+  if (status === 'not_fetched') return 'Use Check data';
+  if (status === 'not_found') return 'Ticker unavailable';
   if (['rate_limited', 'budget_exhausted'].includes(status)) return 'Refresh paused';
   return 'Unavailable';
 }
@@ -21,7 +23,7 @@ function checked(value: string | null) {
   return value ? new Date(value).toLocaleString('en-CA', { timeZone: 'America/Toronto', dateStyle: 'medium', timeStyle: 'short' }) + ' ET' : 'Not yet fetched';
 }
 
-export function MarketOverview() {
+export function MarketOverview({ watchedSymbols }: { watchedSymbols?: string[] }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -47,6 +49,9 @@ export function MarketOverview() {
     return () => clearInterval(timer);
   }, []);
 
+  const stocks: Snapshot['stocks'] = (watchedSymbols ?? snapshot?.stocks.map(stock => stock.symbol) ?? []).map(symbol =>
+    snapshot?.stocks.find(stock => stock.symbol === symbol) ?? { symbol, source: 'Tiingo', source_url: 'https://www.tiingo.com/', status: 'not_fetched', fetched_at: null, next_refresh_at: null, data: null });
+
   return <section className="market-section" aria-labelledby="market-title" data-testid="market-overview" aria-busy={busy}>
     <div className="market-heading"><div><div className="eyebrow">PUBLISHED MARKET DATA</div><h2 id="market-title">The market, in context.</h2><p>Source dates stay visible. Daily observations, with no simulated prices.</p></div><button className="button secondary small" disabled={busy} onClick={() => void load()}><RefreshCw size={14} className={busy ? 'spin' : ''} />Check data</button></div>
     {error && <p role="alert" className="market-notice">{error}{snapshot ? ' Previously loaded values may be stale.' : ''}</p>}
@@ -61,8 +66,8 @@ export function MarketOverview() {
         <details className="market-provenance"><summary>Source & freshness</summary><a href={item.source_url} target="_blank" rel="noreferrer">{item.source}<ExternalLink size={11} /></a><p>Retrieved {checked(item.fetched_at)}</p><p>Next check after {checked(item.next_refresh_at)}</p></details>
       </article>)}</div>
       <section className="card market-stocks"><div className="card-heading"><div><div className="eyebrow">EQUITIES & TECHNICAL INDICATORS</div><h3>US market watchlist</h3></div><span className="subtle-label">End of day · USD</span></div>
-        {snapshot.stocks.some(stock => stock.status === 'key_missing') && <p className="market-notice">Stock prices and indicators are awaiting a Tiingo connection. Missing values stay empty.</p>}
-        <div className="table-scroll"><table className="performance-table market-table"><caption className="sr-only">Published stock closes and indicators calculated from adjusted daily closes</caption><thead><tr><th scope="col">Symbol / date</th><th scope="col">Close</th><th scope="col" title="Return calculated from split- and dividend-adjusted closes">Adjusted 1d return</th><th scope="col">SMA 20 / 50</th><th scope="col">RSI 14</th><th scope="col">MACD / signal</th></tr></thead><tbody>{snapshot.stocks.map(stock => <tr key={stock.symbol}>
+        {stocks.some(stock => stock.status === 'key_missing') && <p className="market-notice">Stock prices and indicators are awaiting a Tiingo connection. Missing values stay empty.</p>}
+        <div className="table-scroll"><table className="performance-table market-table"><caption className="sr-only">Published stock closes and indicators calculated from adjusted daily closes</caption><thead><tr><th scope="col">Symbol / date</th><th scope="col">Close</th><th scope="col" title="Return calculated from split- and dividend-adjusted closes">Adjusted 1d return</th><th scope="col">SMA 20 / 50</th><th scope="col">RSI 14</th><th scope="col">MACD / signal</th></tr></thead><tbody>{stocks.map(stock => <tr key={stock.symbol}>
           <th scope="row"><strong>{stock.symbol}</strong><small>{stock.data?.as_of ?? 'No observation'}</small><span className={`market-status ${stale(stock) || stock.status !== 'ok' ? 'pending' : ''}`}>{statusLabel(stale(stock) ? 'stale' : stock.status)}</span></th>
           <td>{stock.data ? money(stock.data.close, 2) : '—'}<small>{stock.data ? `${stock.data.volume.toLocaleString('en-CA')} shares` : 'Volume unavailable'}</small></td>
           <td className={stock.data ? stock.data.change_pct >= 0 ? 'positive' : 'negative' : ''}>{stock.data ? percent(stock.data.change_pct) : '—'}</td>
@@ -70,7 +75,7 @@ export function MarketOverview() {
           <td>{number(stock.data?.indicators.macd)}<small>{number(stock.data?.indicators.macd_signal)}</small></td>
         </tr>)}</tbody></table></div>
         <div className="market-footnote"><a href="https://www.tiingo.com/" target="_blank" rel="noreferrer">Source: Tiingo<ExternalLink size={11} /></a><span>{snapshot.price_frequency}. Indicators use adjusted closes; shown closes and volumes are unadjusted.</span></div>
-        <details className="market-method"><summary>Calculation & refresh details</summary><p>{snapshot.indicator_basis} RSI uses Wilder smoothing; EMA starts with the simple average. An em dash means insufficient or unavailable data.</p><p>Requests share a server-side budget. Bank of Canada observations use a six-hour cache. Tiingo Starter responses are transient: reloading can consume another request and may reach the refresh limit. Persistent stock research requires suitable data rights.</p>{snapshot.stocks.map(stock => <p key={stock.symbol}>{stock.symbol}: retrieved {checked(stock.fetched_at)}; next check after {checked(stock.next_refresh_at)}.</p>)}</details>
+        <details className="market-method"><summary>Calculation & refresh details</summary><p>{snapshot.indicator_basis} RSI uses Wilder smoothing; EMA starts with the simple average. An em dash means insufficient or unavailable data.</p><p>Requests share a server-side budget. Bank of Canada observations use a six-hour cache. Tiingo Starter responses are transient: reloading can consume another request and may reach the refresh limit. Persistent stock research requires suitable data rights.</p>{stocks.map(stock => <p key={stock.symbol}>{stock.symbol}: retrieved {checked(stock.fetched_at)}; next check after {checked(stock.next_refresh_at)}.</p>)}</details>
       </section>
       <p className="market-attribution">Currency and rate data: Bank of Canada. Changes calculated by Parallax Lab. FX values are indicative daily averages. Monthly rate dates identify the observation month.</p>
     </>}

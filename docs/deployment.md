@@ -87,10 +87,34 @@ returned. No public request fetches market data. News context loads manually in
 the private workspace. Provider credentials are not available in previews by
 default; `PARALLAX_MARKET_NETWORK=0` prevents preview traffic.
 
-Context is informational: baseline algorithms do not consume news. Earnings
+Context is informational: historical replays do not consume current news. News
+queries follow the private watchlist; SEC and earnings currently cover watched
+companies with known mappings (AAPL, MSFT, NVDA). Earnings
 cover the current company watchlist (AAPL, MSFT, NVDA); ETF filings are not
 misrepresented as operating-company events. Missing keys and empty calendars
 remain distinct states. No sample stories or invented observations are used.
+
+## OpenAI model selection
+
+Set `OPENAI_API_KEY` as a **Secret** in Vercel Production for the API service.
+Keep it out of previews and never use a `NEXT_PUBLIC_` prefix. Redeploy after env
+changes. The private UI calls the authenticated server; no local env file is
+required for deployed usage. `PARALLAX_OPENAI_MODELS` is a comma-separated allowlist
+of supported provider IDs (`gpt-6-luna,gpt-6.1-sol,gpt-6-astra`); setting
+`PARALLAX_OPENAI_NETWORK=0` disables calls. Unsupported IDs fail before I/O.
+
+App limits are six calls per experiment, six per minute and 24 per rolling day,
+shared across workers in Neon. A call is charged to the app quota before I/O;
+failures count and provider cooldowns apply. Inference has a 60-second deadline,
+15 seconds per call and 1,024 output tokens per call, with no retries. OpenAI
+account billing and provider rate limits apply independently. All participants
+decide at the same selected checkpoints and fills remain next-open. Pretrained
+models may know future historical events; do not treat replay results as prospective.
+
+The owner watchlist is stored as ticker preferences only in Neon. It permits up
+to ten validated US stock/ETF tickers, with source-specific availability; saving
+preferences does not fetch provider content. Existing data entitlements continue
+to gate persistent experiments and public performance.
 
 ## Tiingo storage and publication rights
 

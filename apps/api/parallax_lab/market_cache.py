@@ -59,7 +59,7 @@ class MarketCache:
             return entry, token
 
     def finish(self, key: str, provider: str, token: str, now: int, *, data=None, ttl=21_600,
-               error: str | None = None, retry_after: int = 0, persistent=True):
+               error: str | None = None, retry_after: int = 0, persistent=True, provider_backoff=True):
         with self.locked() as connection:
             entry = self.read(connection, f"cache:{key}")
             if entry.get("lease") != token:
@@ -68,9 +68,13 @@ class MarketCache:
             if error:
                 failures = min(state.get("failures", 0) + 1, 6)
                 delay = max(retry_after, min(900 * 2 ** (failures - 1), 21_600))
-                self.write(connection, f"provider:{provider}", {
-                    **state, "failures": failures, "blocked_until": now + delay, "error": error,
-                })
+                if provider_backoff:
+                    self.write(connection, f"provider:{provider}", {
+                        **state, "failures": failures, "blocked_until": now + delay, "error": error,
+                    })
+                else:
+                    # A missing ticker pauses only that lookup, not healthy assets.
+                    entry['expires_at'] = now + delay
                 entry = {**entry, "error": error, "retry_at": now + delay}
             else:
                 # A different request's concurrent failure/backoff still applies.

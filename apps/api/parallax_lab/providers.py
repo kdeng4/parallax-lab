@@ -1,4 +1,4 @@
-"""Opt-in cloud decision adapters; the replay demo never calls these providers.
+"""Opt-in cloud decision adapters for bounded owner-only paper experiments.
 
 Only observable inputs and concise decision summaries cross this boundary. Model
 IDs must be explicitly allowlisted by the application operator. These adapters do
@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import UTC
 from typing import Literal, Protocol
 
 import httpx
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator, model_validator
+
+from .market_feeds import retry_seconds
 
 
 class Candle(BaseModel):
@@ -50,6 +53,10 @@ class DecisionInput(BaseModel):
     symbol: str = Field(min_length=1, max_length=32)
     candles: tuple[Candle, ...] = Field(min_length=1)
     strategy_markdown: str = Field(min_length=1, max_length=100_000)
+    current_allocation: float = Field(default=0, ge=0, le=1)
+    max_allocation: float = Field(default=1, gt=0, le=1)
+    interval: Literal["1m", "1d"] = "1d"
+    replay_caution: str = "Historical replay: pretrained models may know later events. This is not a prospective test."
 
     @model_validator(mode="after")
     def validate_chronological_snapshot(self):
@@ -75,6 +82,9 @@ class ProviderConfig(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     allowed_models: tuple[str, ...] = Field(min_length=1)
     api_key: SecretStr | None = Field(default=None, repr=False)
+    timeout_seconds: float = Field(default=45, gt=0, le=45)
+    max_output_tokens: int = Field(default=2048, ge=128, le=2048)
+    reasoning_effort: Literal["low"] | None = None
 
 
 class ProviderConfigurationError(ValueError):
@@ -84,12 +94,18 @@ class ProviderConfigurationError(ValueError):
 class ProviderError(RuntimeError):
     """A sanitized provider failure, safe to expose without response bodies."""
 
+    def __init__(self, message: str, *, status_code: int | None = None, retry_after: int = 0):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
 
 class ProviderOutputError(ProviderError):
     """A provider returned a refusal, incomplete response, or invalid decision."""
 
 
 class DecisionProvider(Protocol):
+    last_response_metadata: dict
     async def decide(self, snapshot: DecisionInput) -> Decision: ...
 
 
@@ -120,20 +136,23 @@ class _RemoteAdapter:
         self.config = config
         self._api_key = SecretStr(key)
         self._client = client
+        self.last_response_metadata: dict = {}
 
     async def _post(self, url: str, headers: dict, payload: dict) -> dict:
         try:
             if self._client is not None:
                 response = await self._client.post(
-                    url, headers=headers, json=payload, follow_redirects=False
+                    url, headers=headers, json=payload, follow_redirects=False, timeout=self.config.timeout_seconds
                 )
             else:
-                async with httpx.AsyncClient(timeout=45.0, follow_redirects=False) as client:
+                async with httpx.AsyncClient(timeout=self.config.timeout_seconds, follow_redirects=False) as client:
                     response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            retry_after = retry_seconds(exc.response.headers.get("retry-after", "0"), int(time.time()))
             raise ProviderError(
-                f"{self.provider} request failed (HTTP {exc.response.status_code})"
+                f"{self.provider} request failed (HTTP {exc.response.status_code})",
+                status_code=exc.response.status_code, retry_after=retry_after,
             ) from None
         except httpx.HTTPError:
             raise ProviderError(f"{self.provider} request failed in transport") from None
@@ -164,7 +183,8 @@ class OpenAIAdapter(_RemoteAdapter):
             {
                 "model": self.config.model,
                 "store": False,
-                "max_output_tokens": 2048,
+                "max_output_tokens": self.config.max_output_tokens,
+                **({"reasoning": {"effort": self.config.reasoning_effort}} if self.config.reasoning_effort else {}),
                 "input": [
                     {"role": "system", "content": _SYSTEM},
                     {"role": "user", "content": snapshot.model_dump_json()},
@@ -204,7 +224,15 @@ class OpenAIAdapter(_RemoteAdapter):
             value = json.loads("".join(texts))
         except ValueError:
             raise ProviderOutputError("OpenAI returned malformed decision JSON") from None
-        return self._decision(value)
+        decision = self._decision(value)
+        usage = result.get("usage")
+        self.last_response_metadata = {
+            "response_id": result.get("id") if isinstance(result.get("id"), str) else None,
+            "response_model": result.get("model") if isinstance(result.get("model"), str) else self.config.model,
+            "usage": {key: usage[key] for key in ("input_tokens", "output_tokens", "total_tokens")
+                      if isinstance(usage, dict) and type(usage.get(key)) is int and usage[key] >= 0},
+        }
+        return decision
 
 
 class AnthropicAdapter(_RemoteAdapter):

@@ -1,3 +1,3 @@
 """Parallax Lab paper-trading research service."""
 
-ENGINE_VERSION = "0.2.0"
+ENGINE_VERSION = "0.3.0"

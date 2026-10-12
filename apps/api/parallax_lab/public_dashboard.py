@@ -3,7 +3,7 @@
 import math
 import os
 
-from .engine import MODELS
+from .model_catalog import MODELS, available_models
 
 
 def attach_benchmark(detail, benchmark):
@@ -23,7 +23,7 @@ def attach_benchmark(detail, benchmark):
 
 
 def public_dashboard(store):
-    result = {'agents': [{'id': key, 'name': value['name']} for key, value in MODELS.items()],
+    result = {'agents': [{'id': value['id'], 'name': value['name']} for value in available_models()],
               'study': None, 'series': [], 'activities': []}
     # Approval is an operator assertion of a suitable data licence, not a toggle
     # that creates rights. Both the immutable run and the current deployment must approve.

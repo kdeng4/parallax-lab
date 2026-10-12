@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 afterEach(() => { process.env = { ...oldEnv }; globalThis.fetch = oldFetch; });
 
-for (const path of ['health', 'catalog', 'market/overview', 'context/overview', 'experiments',
+for (const path of ['health', 'catalog', 'market/overview', 'market/watchlist', 'context/overview', 'experiments',
   'experiments/00000000-0000-4000-8000-000000000000', 'experiments/00000000-0000-4000-8000-000000000000/events',
   'experiments/00000000-0000-4000-8000-000000000000/export']) {
   test(`private ${path} fails closed without a GitHub session`, async () => {
@@ -87,6 +87,20 @@ test('approved local write streams the response and keeps the service key server
   assert.equal(response.status, 200);
   assert.equal(calls[0].init.headers.get('authorization'), `Bearer ${token}`);
   assert.equal((await response.text()).includes(token), false);
+});
+
+test('watchlist writes require the same owner and CSRF checks as experiments', async () => {
+  const path = 'market/watchlist';
+  const body = JSON.stringify({ symbols: ['TSLA', 'AMD'] });
+  assert.equal((await POST(request(path, 'POST', {}, body), context(path))).status, 503);
+  assert.equal(calls.length, 0);
+  local();
+  assert.equal((await POST(request(path, 'POST', { origin: 'https://evil.example' }, body), context(path))).status, 403);
+  assert.equal(calls.length, 0);
+  const response = await POST(request(path, 'POST', {}, body), context(path));
+  assert.equal(response.status, 200);
+  assert.equal(calls[0].url, 'https://private.example/api/v1/market/watchlist');
+  assert.equal(calls[0].init.headers.get('authorization'), `Bearer ${token}`);
 });
 const verified = email => ({ user: { email, emailVerified: true }, session: { expiresAt: new Date(Date.now() + 3600000) } });
 const owner = [{ providerId: 'github', accountId: '49372435' }];

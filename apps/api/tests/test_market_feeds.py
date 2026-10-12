@@ -215,7 +215,7 @@ def test_daily_replay_provenance_causality_and_correct_annualization(store):
 
 def test_real_api_never_falls_back_to_synthetic(store, monkeypatch):
     monkeypatch.delenv("PARALLAX_MARKET_SOURCE")
-    with TestClient(create_app(f"sqlite:///{store.path}", seed_demo=False)) as client:
+    with TestClient(create_app(f"sqlite:///{store.path}")) as client:
         catalog = client.get("/api/v1/catalog").json()
         assert catalog["data_source"] == "tiingo" and catalog["max_bars"] == 252
         assert client.post("/api/v1/experiments", json={"bars": 60}).status_code == 503

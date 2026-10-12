@@ -29,10 +29,10 @@ def public_dashboard(store):
     # that creates rights. Both the immutable run and the current deployment must approve.
     if os.getenv('PARALLAX_PUBLIC_PERFORMANCE_APPROVED') != '1':
         return result
-    for summary in store.list_experiments()[:20]:
+    for summary in store.list_experiments(limit=20):
         if summary.get('data_source') == 'synthetic':
             continue
-        detail = store.get(summary['id'])
+        detail = store.get(summary['id'], include_events=False)
         if not detail or detail.get('metadata', {}).get('public_performance_approved') is not True:
             continue
         initial = detail.get('initial_cash', 0)

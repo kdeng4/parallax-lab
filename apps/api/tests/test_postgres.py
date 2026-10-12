@@ -35,7 +35,7 @@ def test_migration_repeat_and_store_factory(database_url):
 
 
 def test_postgres_roundtrip_restart_and_time_filters(database_url):
-    with TestClient(create_app(database_url, seed_demo=False)) as client:
+    with TestClient(create_app(database_url)) as client:
         assert client.get("/api/v1/health").json()["storage"] == "postgresql"
         response = client.post("/api/v1/experiments", json={"name": "PostgreSQL contract", "bars": 60})
         assert response.status_code == 201
@@ -43,6 +43,10 @@ def test_postgres_roundtrip_restart_and_time_filters(database_url):
         endpoint = f"/api/v1/experiments/{detail['id']}"
         assert client.get(endpoint).json() == detail
         assert client.get(endpoint + "/export").json() == detail
+        result_only = client.app.state.store.get(detail["id"], include_events=False)
+        assert "events" not in result_only
+        assert result_only["runs"] == detail["runs"]
+        assert len(client.app.state.store.list_experiments(limit=1)) == 1
         params = {"type": "decision", "run_id": detail["runs"][0]["id"], "limit": 5, "offset": 5}
         page = client.get(endpoint + "/events", params=params).json()
         assert page["total"] == 60 and len(page["events"]) == 5
@@ -52,7 +56,7 @@ def test_postgres_roundtrip_restart_and_time_filters(database_url):
         instant["from_time"] = "2026-01-05T14:30:59.000001Z"
         instant["to_time"] = "2026-01-05T14:30:59.000499Z"
         assert client.get(endpoint + "/events", params=instant).json()["total"] == 0
-    with TestClient(create_app(database_url, seed_demo=False)) as restarted:
+    with TestClient(create_app(database_url)) as restarted:
         assert restarted.get(endpoint).json() == detail
         assert detail["id"] in {e["id"] for e in restarted.get("/api/v1/experiments").json()["experiments"]}
 

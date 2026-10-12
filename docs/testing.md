@@ -15,8 +15,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-GitHub Actions runs both gates and builds the Docker images on pushes and pull
-requests. The backend's 90% branch-inclusive coverage floor prevents large
+GitHub Actions runs both gates and builds the Docker images on main pushes and
+pull requests. Feature branches use the pull-request run instead of duplicating
+the same checks on every push. The backend's 90% branch-inclusive coverage floor prevents large
 untested changes; passing it does not prove strategy quality or live-trading
 safety. Review the uncovered lines and the test behaviour when changing the
 execution or accounting rules.
@@ -39,7 +40,9 @@ The backend uses seeded synthetic market data and temporary SQLite databases.
 Hypothesis reports failing order sequences and replay inputs so they can be
 reproduced during investigation. Playwright starts its own API and Next.js
 services against a temporary database. It never needs provider keys or network
-market data.
+market data. Its fixture creation is confined to `tests/browser_server.py` and a
+temporary directory named `parallax-lab-e2e-*`; the application never seeds data.
+The TypeScript gate also rejects unused local variables and parameters.
 
 Before adding live feeds or paid models, add contract tests for normalized
 timestamps, missing/out-of-order candles, identical model input snapshots,

@@ -16,8 +16,6 @@ def epoch_microseconds(value: str) -> int:
 
 class Store:
     dialect = "sqlite"
-    integrity_error = sqlite3.IntegrityError
-
     def __init__(self, database_url: str):
         prefix = "sqlite:///"
         if not database_url.startswith(prefix):
@@ -89,18 +87,22 @@ class Store:
             connection.executemany("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)",
                                    [(event["id"], detail["id"], event["sequence"], event["timestamp"], event["run_id"], event["type"], json.dumps(event, allow_nan=False)) for event in detail["events"]])
 
-    def list_experiments(self) -> list[dict]:
+    def list_experiments(self, *, limit: int | None = None) -> list[dict]:
+        query = "SELECT summary FROM experiments ORDER BY created_at DESC, id DESC"
+        if limit is not None:
+            query += " LIMIT ?"
         with self.connection() as connection:
-            return [json.loads(row["summary"]) for row in connection.execute("SELECT summary FROM experiments ORDER BY created_at DESC, id DESC")]
+            return [json.loads(row["summary"]) for row in connection.execute(query, (limit,) if limit is not None else ())]
 
-    def get(self, experiment_id: str) -> dict | None:
+    def get(self, experiment_id: str, *, include_events: bool = True) -> dict | None:
         with self.connection() as connection:
             row = connection.execute("SELECT payload FROM experiments WHERE id=?", (experiment_id,)).fetchone()
             if row is None:
                 return None
             result = json.loads(row["payload"])
-            result["events"] = [json.loads(event["payload"]) for event in connection.execute(
-                "SELECT payload FROM events WHERE experiment_id=? ORDER BY sequence", (experiment_id,))]
+            if include_events:
+                result["events"] = [json.loads(event["payload"]) for event in connection.execute(
+                    "SELECT payload FROM events WHERE experiment_id=? ORDER BY sequence", (experiment_id,))]
             return result
 
     def filter_events(self, experiment_id: str, *, run_id: str | None, event_type: str | None, from_time: str | None,

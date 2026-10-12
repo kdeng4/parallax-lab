@@ -12,9 +12,9 @@ def migrate(database_url: str):
         connection.execute("SELECT pg_advisory_xact_lock(719230014)")
         exists = connection.execute("SELECT to_regclass('public.schema_migrations')").fetchone()[0]
         versions = {row[0] for row in connection.execute("SELECT version FROM schema_migrations")} if exists else set()
-        if exists and (not versions or versions != set(range(1, max(versions) + 1)) or max(versions) > 2):
+        if exists and (not versions or versions != set(range(1, max(versions) + 1)) or max(versions) > 3):
             raise RuntimeError("Unexpected migration state; inspect the schema before retrying")
-        for version, name in ((1, "001_initial.sql"), (2, "002_market_cache.sql")):
+        for version, name in ((1, "001_initial.sql"), (2, "002_market_cache.sql"), (3, "003_live_studies.sql")):
             if version not in versions:
                 connection.execute((Path(__file__).parent / "migrations" / name).read_text())
 
@@ -24,4 +24,4 @@ if __name__ == "__main__":
     if not url or not url.startswith(("postgresql://", "postgres://")):
         raise SystemExit("Set PARALLAX_DATABASE_URL_UNPOOLED to the direct PostgreSQL owner connection")
     migrate(url)
-    print("PostgreSQL schema is at version 2")
+    print("PostgreSQL schema is at version 3")

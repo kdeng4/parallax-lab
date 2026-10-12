@@ -139,3 +139,37 @@ deployment was created. The CLI had no authenticated account in this workspace,
 and the login request failed through the workspace network. Neon was not
 connected: the current API accepts SQLite URLs only and no Neon project
 connector is available in this task.
+
+## Ongoing studies validation — October 12, 2026
+
+The forward-study audit added model/strategy portfolio pairs, one common daily
+news/price corpus, current-time starts, immutable settings, execution delays and
+percentage returns against SPY. It also corrected cash-only insolvency, partial
+accounting on failed inputs, stale-worker writes, interrupted call retries,
+cohort execution timing and exchange holiday/early-close handling. Obsolete
+cloud-inference-disabled copy was removed.
+
+Local checks passed: 246 backend tests (6 PostgreSQL tests require CI), 92.79%
+branch-aware backend coverage, 33 owner/machine authorization tests, 8 scheduler
+tests, TypeScript checks and production builds. The scheduler bundle is under
+5 KiB and minute requests compare UTC intervals without timezone formatting.
+
+Migration 003 was applied on isolated Neon branch
+`audit-forward-studies-2026-10-12`. Transactional study/snapshot/point/event writes
+and rollback were verified through Neon; an attempted snapshot update triggered
+the immutable-record guard and rolled back. Runtime privileges allow mutable
+account updates but forbid snapshot updates. All test records were rolled back.
+Direct Postgres tests cannot run in this workspace because database DNS/TCP is
+unavailable; the GitHub CI PostgreSQL service runs the full driver tests.
+
+Database connection traceback output exposed a runtime credential during an
+unsuccessful direct-connection check. Production and preview passwords were
+rotated, Vercel Secrets updated, the production app redeployed and its public
+projection rechecked successfully. The exposed role on the isolated audit branch
+was disabled; temporary connection files and unused provisioning roles were
+removed. Application runtime privileges remain restricted.
+
+The production data storage/publication assertions remain disabled. No real
+ongoing study has been started with unverified data entitlements, and no example
+portfolio or source article is seeded into the deployed workspace. Actual owner
+OAuth callback verification still needs the owner's browser session.

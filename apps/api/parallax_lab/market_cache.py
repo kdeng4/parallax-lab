@@ -3,6 +3,7 @@
 import json
 from contextlib import contextmanager
 from uuid import uuid4
+from datetime import UTC, datetime
 
 
 class MarketCache:
@@ -36,6 +37,25 @@ class MarketCache:
             rows = connection.execute("SELECT key FROM market_state WHERE key LIKE 'cache:tiingo:%'").fetchall()
             for row in rows:
                 self.write(connection, row['key'], {})
+
+    def reserve_tiingo_transfer(self, now, symbols, maximum_bytes):
+        """Account-wide monthly symbols/bandwidth, including concurrent fetches."""
+        month = datetime.fromtimestamp(now, UTC).strftime('%Y-%m')
+        key = f'usage:tiingo:{month}'
+        with self.locked() as connection:
+            state = self.read(connection, key)
+            selected = sorted(set(state.get('symbols', [])) | set(symbols))
+            if len(selected) > 500:
+                return None, 'monthly_symbol_limit'
+            if state.get('bytes', 0) + maximum_bytes > 800_000_000:
+                return None, 'monthly_bandwidth_limit'
+            self.write(connection, key, {'symbols': selected, 'bytes': state.get('bytes', 0) + maximum_bytes})
+        return key, None
+
+    def finish_tiingo_transfer(self, key, reserved, actual):
+        with self.locked() as connection:
+            state = self.read(connection, key)
+            self.write(connection, key, {**state, 'bytes': max(0, state['bytes'] - reserved + actual)})
 
     def claim(self, key: str, provider: str, now: int, limits: tuple[tuple[int, int], ...], *, persistent=True):
         with self.locked() as connection:

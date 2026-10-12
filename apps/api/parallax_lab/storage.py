@@ -46,6 +46,39 @@ class Store:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL CHECK (length(value) <= 1048576)
                 );
+                CREATE TABLE IF NOT EXISTS live_studies (
+                    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS live_studies_active ON live_studies (status, created_at DESC);
+                CREATE TABLE IF NOT EXISTS live_snapshots (
+                    id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES live_studies(id), created_at TEXT NOT NULL, payload TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS live_points (
+                    id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES live_studies(id), timestamp TEXT NOT NULL, payload TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS live_points_study ON live_points (study_id, timestamp);
+                CREATE TABLE IF NOT EXISTS live_events (
+                    id TEXT PRIMARY KEY, study_id TEXT NOT NULL REFERENCES live_studies(id), timestamp TEXT NOT NULL, payload TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS live_events_study ON live_events (study_id, timestamp DESC);
+                CREATE TRIGGER IF NOT EXISTS live_snapshots_no_update BEFORE UPDATE ON live_snapshots BEGIN
+                    SELECT RAISE(ABORT, 'Snapshots are append-only');
+                END;
+                CREATE TRIGGER IF NOT EXISTS live_snapshots_no_delete BEFORE DELETE ON live_snapshots BEGIN
+                    SELECT RAISE(ABORT, 'Snapshots are append-only');
+                END;
+                CREATE TRIGGER IF NOT EXISTS live_points_no_update BEFORE UPDATE ON live_points BEGIN
+                    SELECT RAISE(ABORT, 'Valuations are append-only');
+                END;
+                CREATE TRIGGER IF NOT EXISTS live_points_no_delete BEFORE DELETE ON live_points BEGIN
+                    SELECT RAISE(ABORT, 'Valuations are append-only');
+                END;
+                CREATE TRIGGER IF NOT EXISTS live_events_no_update BEFORE UPDATE ON live_events BEGIN
+                    SELECT RAISE(ABORT, 'Audit events are append-only');
+                END;
+                CREATE TRIGGER IF NOT EXISTS live_events_no_delete BEFORE DELETE ON live_events BEGIN
+                    SELECT RAISE(ABORT, 'Audit events are append-only');
+                END;
                 CREATE TABLE IF NOT EXISTS experiments (
                     id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,

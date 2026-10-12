@@ -4,6 +4,7 @@ import math
 import os
 
 from .model_catalog import MODELS, available_models
+from .live_storage import LiveStore
 
 
 def attach_benchmark(detail, benchmark):
@@ -29,6 +30,32 @@ def public_dashboard(store):
     # that creates rights. Both the immutable run and the current deployment must approve.
     if os.getenv('PARALLAX_PUBLIC_PERFORMANCE_APPROVED') != '1':
         return result
+    if hasattr(store, 'connection'):
+        live = LiveStore(store)
+        for summary in live.list():
+            study = live.get(summary['id'])
+            if not study or study.get('metadata', {}).get('public_performance_approved') is not True:
+                continue
+            if study.get('metadata', {}).get('data_source') != 'tiingo':
+                continue
+            result['study'] = {'id': study['id'], 'recorded_at': study['started_at'], 'mode': 'ongoing_paper_study'}
+            names = {}
+            for index, account in enumerate(study['accounts']):
+                names[account['id']] = f"{MODELS.get(account['model_id'], {}).get('name', 'Research agent')} {index + 1}"
+            points = study['points']
+            # Bound public transfer while preserving aligned timestamps and endpoints.
+            if len(points) > 1000:
+                points = [points[round(index * (len(points) - 1) / 999)] for index in range(1000)]
+            result['agents'] = [{'id': key, 'name': name} for key, name in names.items()]
+            result['series'] = [{'id': key, 'name': name, 'benchmark': False,
+                                 'points': [{'date': point['timestamp'], 'value': round(point['returns'][key], 4)} for point in points]}
+                                for key, name in names.items()]
+            result['series'].append({'id': 'benchmark', 'name': 'S&P 500 · SPY', 'benchmark': True,
+                                     'points': [{'date': point['timestamp'], 'value': round(point['benchmark_pct'], 4)} for point in points]})
+            result['activities'] = [{'id': item['id'], 'agent': names[item['account_id']], 'action': item['details']['side'],
+                                     'symbol': item['details']['symbol'], 'session_date': item['timestamp']}
+                                    for item in study['events'] if item['type'] == 'fill' and item['account_id'] in names][:100]
+            return result
     for summary in store.list_experiments(limit=20):
         if summary.get('data_source') == 'synthetic':
             continue
@@ -44,7 +71,7 @@ def public_dashboard(store):
             base_name = MODELS.get(run.get('model_id'), {}).get('name', 'Research agent')
             name = base_name if detail.get('comparison') == 'models' else f'{base_name} {index + 1}'
             names[run['id']] = name
-            points = [{'date': point['timestamp'], 'value': round(point['equity'] / initial * 100, 4)}
+            points = [{'date': point['timestamp'], 'value': round((point['equity'] / initial - 1) * 100, 4)}
                       for point in run['equity_curve'][:253] if math.isfinite(point['equity'])]
             result['series'].append({'id': run['id'], 'name': name, 'benchmark': False, 'points': points})
             for trade in run.get('trades', []):
@@ -54,7 +81,7 @@ def public_dashboard(store):
         benchmark = detail.get('benchmark')
         if benchmark:
             result['series'].append({'id': 'benchmark', 'name': 'S&P 500 · SPY', 'benchmark': True,
-                                     'points': [{'date': p['timestamp'], 'value': p['value']} for p in benchmark['curve'][:253]]})
+                                     'points': [{'date': p['timestamp'], 'value': round(p['value'] - 100, 4)} for p in benchmark['curve'][:253]]})
         result['activities'] = sorted(result['activities'], key=lambda e: (e['session_date'], e['id']), reverse=True)[:100]
         result['agents'] = [{'id': key, 'name': name} for key, name in names.items()]
         break

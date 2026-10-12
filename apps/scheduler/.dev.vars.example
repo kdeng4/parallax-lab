@@ -1,0 +1,2 @@
+# Local test value only. Set the production secret with Cloudflare secret bindings.
+SCHEDULER_TOKEN=local-test-only-012345678901234567890123456789

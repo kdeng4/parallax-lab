@@ -16,10 +16,12 @@ function fail(detail: string, status: number) {
 async function proxy(request: Request, context: Context) {
   const { path } = await context.params;
   const route = path.join('/');
-  if (!/^(health|catalog|market\/(?:overview|watchlist)|context\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
+  if (!/^(health|catalog|market\/(?:overview|watchlist)|context\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?|studies(?:\/[0-9a-f-]{36}(?:\/(?:pause|resume|check|snapshots\/[0-9a-f-]{36}))?)?)$/.test(route)) {
     return fail('Not found', 404);
   }
-  if (request.method === 'POST' && !['experiments', 'market/watchlist'].includes(route)) return fail('Method not allowed', 405);
+  if (request.method === 'POST' && !['experiments', 'market/watchlist', 'studies'].includes(route)
+      && !/^studies\/[0-9a-f-]{36}\/(pause|resume|check)$/.test(route)) return fail('Method not allowed', 405);
+  if (request.method === 'GET' && /^studies\/[0-9a-f-]{36}\/(pause|resume|check)$/.test(route)) return fail('Method not allowed', 405);
 
   const hosted = process.env.VERCEL === '1';
   const token = process.env.PARALLAX_API_TOKEN;
@@ -78,6 +80,20 @@ async function proxy(request: Request, context: Context) {
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(110_000),
     });
     const outgoing = new Headers({ ...noStore, 'X-Content-Type-Options': 'nosniff' });
+    if (upstream.ok && request.method === 'POST' && (route === 'studies' || /^studies\/[0-9a-f-]{36}\/(pause|resume)$/.test(route))) {
+      const scheduler = process.env.PARALLAX_SCHEDULER_URL;
+      const schedulerToken = process.env.PARALLAX_SCHEDULER_TOKEN;
+      if (scheduler && schedulerToken && schedulerToken.length >= 32) {
+        try {
+          const sync = await fetch(new URL('/sync', scheduler), {
+            method: 'POST', headers: { Authorization: `Bearer ${schedulerToken}` },
+            cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(5000),
+          });
+          await sync.body?.cancel();
+          outgoing.set('X-Scheduler-Sync', sync.ok ? 'ok' : 'pending');
+        } catch { outgoing.set('X-Scheduler-Sync', 'pending'); }
+      }
+    }
     for (const name of ['content-type', 'content-disposition']) {
       const value = upstream.headers.get(name);
       if (value) outgoing.set(name, value);

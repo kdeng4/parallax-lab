@@ -102,11 +102,11 @@ class ContextFeeds:
     def __init__(self, market):
         self.market = market
 
-    def overview(self):
+    def overview(self, *, symbols=None, tiingo_limits=None):
         from datetime import UTC, datetime
         today = datetime.fromtimestamp(self.market.clock(), UTC).date()
         sources = []
-        watched = self.market.watchlist.get()['symbols']
+        watched = symbols if symbols is not None else self.market.watchlist.get()['symbols']
         watch_key = hashlib.sha256(','.join(sorted(watched)).encode()).hexdigest()[:16]
 
         def add(key, provider, label, fetch, parse, *, credential=True, limits=((3600, 2), (86400, 8)), ttl=21600):
@@ -123,7 +123,7 @@ class ContextFeeds:
         add(f'tiingo:news:{watch_key}', 'tiingo', 'Tiingo News', lambda: self.market.fetch_json(
             'https://api.tiingo.com/tiingo/news', params={'limit': 20, 'tickers': ','.join(watched)}, headers={'Authorization': f'Token {self.market.token}'}),
             lambda payload, day: news(payload, 'Tiingo', day), credential=bool(self.market.token),
-            limits=((60, 5), (3600, 10), (86400, 30)))
+            limits=tiingo_limits or ((60, 5), (3600, 10), (86400, 30)))
         marketaux_key = os.getenv('MARKETAUX_API_KEY', '').strip()
         add(f'marketaux:news:{watch_key}', 'marketaux', 'Marketaux', lambda: self.market.fetch_json(
             'https://api.marketaux.com/v1/news/all', params={'api_token': marketaux_key, 'limit': 3, 'symbols': ','.join(watched), 'language': 'en', 'group_similar': 'true'}),

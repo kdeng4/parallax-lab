@@ -5,6 +5,7 @@ import { GET as publicDashboard } from '../app/api/public/dashboard/route.ts';
 import { GET as sessionRoute } from '../app/api/session/route.ts';
 import { authorizeGitHub, editorAccess } from '../lib/editor-access.ts';
 import { allowedAuthRequest } from '../lib/auth-policy.ts';
+import { GET as schedulerGET, POST as schedulerPOST } from '../app/api/scheduler/[action]/route.ts';
 
 const oldFetch = globalThis.fetch;
 const oldEnv = { ...process.env };
@@ -26,6 +27,8 @@ beforeEach(() => {
 afterEach(() => { process.env = { ...oldEnv }; globalThis.fetch = oldFetch; });
 
 for (const path of ['health', 'catalog', 'market/overview', 'market/watchlist', 'context/overview', 'experiments',
+  'studies', 'studies/00000000-0000-4000-8000-000000000000',
+  'studies/00000000-0000-4000-8000-000000000000/snapshots/00000000-0000-4000-8000-000000000000',
   'experiments/00000000-0000-4000-8000-000000000000', 'experiments/00000000-0000-4000-8000-000000000000/events',
   'experiments/00000000-0000-4000-8000-000000000000/export']) {
   test(`private ${path} fails closed without a GitHub session`, async () => {
@@ -60,10 +63,71 @@ test('public upstream failures return no backend details', async () => {
 });
 test('arbitrary routes and public aliases are not private proxy escape hatches', async () => {
   local();
-  for (const path of ['../secrets', 'public/dashboard', 'market/anything', 'context/anything'])
+  for (const path of ['../secrets', 'public/dashboard', 'market/anything', 'context/anything', 'scheduler/tick', 'scheduler/plan'])
     assert.equal((await GET(request(), context(path))).status, 404);
   assert.equal((await POST(request('catalog', 'POST', {}, '{}'), context('catalog'))).status, 405);
   assert.equal(calls.length, 0);
+});
+
+test('all study writes require owner permission and CSRF, while snapshots cannot be written', async () => {
+  for (const path of ['studies', ...['pause', 'resume', 'check'].map(action => `studies/00000000-0000-4000-8000-000000000000/${action}`)]) {
+    process.env.VERCEL = '1';
+    assert.equal((await POST(request(path, 'POST', {}, '{}'), context(path))).status, 503);
+    local();
+    assert.equal((await POST(request(path, 'POST', { origin: 'https://evil.example' }, '{}'), context(path))).status, 403);
+    assert.equal((await POST(request(path, 'POST', {}, '{}'), context(path))).status, 200);
+    assert.equal(calls.at(-1).url, `https://private.example/api/v1/${path}`);
+  }
+  assert.equal((await POST(request('studies/00000000-0000-4000-8000-000000000000/snapshots/00000000-0000-4000-8000-000000000000', 'POST', {}, '{}'), context('studies/00000000-0000-4000-8000-000000000000/snapshots/00000000-0000-4000-8000-000000000000'))).status, 405);
+});
+
+test('only dedicated machine secret authenticates scheduler; visitor sessions and the app key cannot', async () => {
+  const secret = 'machine-test-key-01234567890123456789012345';
+  const ctx = action => ({ params: Promise.resolve({ action }) });
+  delete process.env.PARALLAX_SCHEDULER_TOKEN;
+  assert.equal((await schedulerGET(request(), ctx('plan'))).status, 503);
+  process.env.PARALLAX_SCHEDULER_TOKEN = secret;
+  for (const authorization of ['', `Bearer ${token}`, 'Bearer wrong', `Bearer ${secret.slice(0, -1)}X`])
+    assert.equal((await schedulerPOST(request('unused', 'POST', { authorization, cookie: 'owner=1' }, '{}'), ctx('tick'))).status, 401);
+  assert.equal(calls.length, 0);
+  assert.equal((await schedulerGET(request('unused', 'GET', { authorization: `Bearer ${secret}` }), ctx('plan'))).status, 200);
+  assert.equal(calls[0].url, 'https://private.example/api/v1/scheduler/plan');
+  assert.equal(calls[0].init.headers.Authorization, `Bearer ${token}`);
+  assert.equal(calls[0].init.headers.cookie, undefined);
+  assert.equal((await schedulerPOST(request('unused', 'POST', { authorization: `Bearer ${secret}` }, '{}'), ctx('tick'))).status, 200);
+  assert.equal(calls[1].init.body, '{}');
+  assert.equal((await schedulerGET(request(), ctx('anything'))).status, 404);
+  assert.equal((await schedulerGET(request(), ctx('tick'))).status, 405);
+  assert.equal((await schedulerPOST(request('unused', 'POST', { authorization: `Bearer ${secret}` }, 'x'.repeat(1025)), ctx('tick'))).status, 413);
+  assert.equal((await schedulerPOST(request('unused', 'POST', { authorization: `Bearer ${secret}`, 'content-type': 'text/plain' }, '{}'), ctx('tick'))).status, 415);
+  assert.equal((await schedulerGET(request('unused?force=1', 'GET', { authorization: `Bearer ${secret}` }), ctx('plan'))).status, 400);
+  delete process.env.BACKEND_INTERNAL_URL;
+  assert.equal((await schedulerGET(request('unused', 'GET', { authorization: `Bearer ${secret}` }), ctx('plan'))).status, 503);
+});
+
+test('scheduler errors never return upstream details or keys', async () => {
+  const secret = 'machine-test-key-01234567890123456789012345';
+  process.env.PARALLAX_SCHEDULER_TOKEN = secret;
+  const ctx = { params: Promise.resolve({ action: 'plan' }) };
+  for (const fail of [async () => new Response('private details', { status: 500 }), async () => { throw new Error('private details'); }]) {
+    globalThis.fetch = fail;
+    const response = await schedulerGET(request('unused', 'GET', { authorization: `Bearer ${secret}` }), ctx);
+    assert.equal(response.status, 502);
+    assert.equal((await response.text()).includes('private details'), false);
+  }
+});
+
+test('changing study schedules refreshes the worker plan without exposing its secret', async () => {
+  local();
+  process.env.PARALLAX_SCHEDULER_URL = 'https://scheduler.example';
+  process.env.PARALLAX_SCHEDULER_TOKEN = 'machine-test-key-01234567890123456789012345';
+  const response = await POST(request('studies', 'POST', {}, '{}'), context('studies'));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('X-Scheduler-Sync'), 'ok');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].url, 'https://scheduler.example/sync');
+  assert.equal(calls[1].init.headers.Authorization, `Bearer ${process.env.PARALLAX_SCHEDULER_TOKEN}`);
+  assert.equal((await response.text()).includes(process.env.PARALLAX_SCHEDULER_TOKEN), false);
 });
 test('approved local reads strip refresh and upstream URL parameters', async () => {
   local();

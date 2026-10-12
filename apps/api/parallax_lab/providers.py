@@ -177,6 +177,13 @@ class OpenAIAdapter(_RemoteAdapter):
     provider = "openai"
 
     async def decide(self, snapshot: DecisionInput) -> Decision:
+        return self._decision(await self.respond(
+            snapshot.model_dump_json(), Decision.model_json_schema(), "paper_trade_decision", _SYSTEM
+        ))
+
+    async def respond(self, input_json: str, schema: dict, schema_name: str, system: str) -> object:
+        """Consume only structured message output, never provider reasoning blocks."""
+        self.last_response_metadata = {}
         result = await self._post(
             "https://api.openai.com/v1/responses",
             {"Authorization": f"Bearer {self._api_key.get_secret_value()}"},
@@ -186,15 +193,15 @@ class OpenAIAdapter(_RemoteAdapter):
                 "max_output_tokens": self.config.max_output_tokens,
                 **({"reasoning": {"effort": self.config.reasoning_effort}} if self.config.reasoning_effort else {}),
                 "input": [
-                    {"role": "system", "content": _SYSTEM},
-                    {"role": "user", "content": snapshot.model_dump_json()},
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": input_json},
                 ],
                 "text": {
                     "format": {
                         "type": "json_schema",
-                        "name": "paper_trade_decision",
+                        "name": schema_name,
                         "strict": True,
-                        "schema": Decision.model_json_schema(),
+                        "schema": schema,
                     }
                 },
             },
@@ -224,7 +231,6 @@ class OpenAIAdapter(_RemoteAdapter):
             value = json.loads("".join(texts))
         except ValueError:
             raise ProviderOutputError("OpenAI returned malformed decision JSON") from None
-        decision = self._decision(value)
         usage = result.get("usage")
         self.last_response_metadata = {
             "response_id": result.get("id") if isinstance(result.get("id"), str) else None,
@@ -232,7 +238,7 @@ class OpenAIAdapter(_RemoteAdapter):
             "usage": {key: usage[key] for key in ("input_tokens", "output_tokens", "total_tokens")
                       if isinstance(usage, dict) and type(usage.get(key)) is int and usage[key] >= 0},
         }
-        return decision
+        return value
 
 
 class AnthropicAdapter(_RemoteAdapter):

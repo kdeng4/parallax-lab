@@ -7,6 +7,7 @@ import statistics
 import time
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -163,6 +164,18 @@ class MarketService:
         self.client_factory = client_factory or (lambda: httpx.Client(timeout=5, follow_redirects=False))
 
     def fetch_json(self, url, *, params, headers=None, csv_response=False):
+        reservation, reserved = None, MAX_RESPONSE_BYTES + 32_768
+        parsed = urlsplit(url)
+        if parsed.hostname == 'api.tiingo.com':
+            path = parsed.path.split('/')
+            symbols = str(params.get('tickers', '')).split(',') if params.get('tickers') else []
+            if len(path) == 3 and path[1] == 'iex':
+                symbols.extend(path[2].split(','))
+            elif len(path) == 5 and path[1:3] in (['tiingo', 'daily'], ['tiingo', 'corporate-actions']):
+                symbols.append(path[3])
+            reservation, error = self.cache.reserve_tiingo_transfer(int(self.clock()), symbols, reserved)
+            if error:
+                raise FeedError(error, 86_400)
         deadline = time.monotonic() + 10
         with self.client_factory() as client, client.stream("GET", url, params=params, headers=headers) as response:
             if response.status_code == 429:
@@ -174,12 +187,16 @@ class MarketService:
             if response.status_code != 200:
                 raise FeedError("provider_unavailable")
             parts, size = [], 0
-            for part in response.iter_bytes():
+            for part in response.iter_bytes(chunk_size=16_384):
                 size += len(part)
                 if size > MAX_RESPONSE_BYTES or time.monotonic() > deadline:
                     raise FeedError("invalid_response")
                 parts.append(part)
             content = b"".join(parts)
+            if reservation:
+                # Failed reads retain the pessimistic reservation. Successful reads
+                # release unused capacity, with a margin for protocol overhead.
+                self.cache.finish_tiingo_transfer(reservation, reserved, size + 8192)
             return content.decode('utf-8-sig') if csv_response else json.loads(content)
 
     def load(self, key, provider, fetch, parse, *, limits=None, ttl=TTL, persistent=None):

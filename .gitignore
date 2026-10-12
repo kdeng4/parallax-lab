@@ -5,6 +5,9 @@
 node_modules/
 .next/
 .vercel/
+.wrangler/
+.dev.vars
+apps/scheduler/dist/
 out/
 .venv/
 .data/

@@ -23,6 +23,7 @@ export interface Catalog {
   max_bars: number;
   replay_available: boolean;
   replay_requirement?: string | null;
+  live?: { available: boolean; requirement: string | null; scheduler_configured: boolean; max_active_studies: number; max_tickers: number; max_pairs: number };
   openai?: { configured: boolean; max_calls_per_experiment: number; max_calls_per_minute: number; max_calls_per_day: number };
 }
 export interface Experiment {
@@ -120,4 +121,26 @@ export interface MarketOverview {
     as_of: string | null; status: string; source: string; source_url: string;
     fetched_at: string | null; next_refresh_at: string | null;
   }[];
+}
+
+export interface StudyAccount {
+  id: string; name: string; model_id: string; strategy_id: string; status: string;
+  equity: number; return_pct: number;
+  book: { cash: string; holdings: Record<string, string>; receivables: Record<string, { amount: string; payment_date: string | null }> };
+}
+export interface LiveStudy {
+  id: string; name: string; status: string; started_at: string; created_at: string;
+  last_tick_at: string | null; last_error: string | null;
+  config: { symbols: string[]; initial_cash: number; timezone: string; window_start: string; window_end: string };
+  accounts: StudyAccount[];
+  points: { timestamp: string; returns: Record<string, number>; benchmark_pct: number }[];
+  events: { id: string; timestamp: string; type: string; message: string; account_id: string | null; details: Record<string, unknown> }[];
+  round: { day: string; stage: string; snapshot_id?: string; snapshot_hash?: string } | null;
+}
+export interface SharedInput {
+  id: string; hash: string; captured_at: string;
+  quotes: Record<string, { price: number; as_of: string; source: string }>;
+  news: { id: string; title: string; summary: string; url: string; published_at: string; provider: string }[];
+  events: { id: string; title: string; summary: string; url: string; date: string; provider: string }[];
+  news_sources: { name: string; status: string; fetched_at: string | null }[];
 }

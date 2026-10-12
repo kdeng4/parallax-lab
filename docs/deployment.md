@@ -1,7 +1,7 @@
 # Parallax Lab deployment
 
 The repo deploys as two Vercel Services: Next.js in `apps/web` and private FastAPI
-in `apps/api`. Cloudflare remains DNS-only. Neon supplies PostgreSQL and managed
+in `apps/api`. Cloudflare supplies DNS and a small scheduler Worker; public app traffic remains DNS-only. Neon supplies PostgreSQL and managed
 GitHub identity. No Cloudflare Access organization or account-wide policy is needed.
 
 The stable public production URL is `https://parallax.pdeng.pp.ua`.
@@ -87,7 +87,7 @@ returned. No public request fetches market data. News context loads manually in
 the private workspace. Provider credentials are not available in previews by
 default; `PARALLAX_MARKET_NETWORK=0` prevents preview traffic.
 
-Context is informational: historical replays do not consume current news. News
+Ongoing studies consume one shared current news/event corpus per daily window. Historical replays do not consume current news. News
 queries follow the private watchlist; SEC and earnings currently cover watched
 companies with known mappings (AAPL, MSFT, NVDA). Earnings
 cover the current company watchlist (AAPL, MSFT, NVDA); ETF filings are not
@@ -104,7 +104,7 @@ of supported provider IDs (`gpt-6-luna,gpt-6.1-sol,gpt-6-astra`); setting
 `PARALLAX_OPENAI_NETWORK=0` disables calls. Unsupported IDs fail before I/O.
 
 App limits are six calls per experiment, six per minute and 24 per rolling day,
-shared across workers in Neon. A call is charged to the app quota before I/O;
+shared across workers in Neon, including ongoing studies. A call is charged to the app quota before I/O;
 failures count and provider cooldowns apply. Inference has a 60-second deadline,
 15 seconds per call and 1,024 output tokens per call, with no retries. OpenAI
 account billing and provider rate limits apply independently. All participants
@@ -130,12 +130,12 @@ has been verified; it does not obtain permission. Leave it `0` on Starter.
 
 `PARALLAX_PUBLIC_PERFORMANCE_APPROVED=1` separately asserts appropriate public
 rights covering **all plotted portfolios and the SPY benchmark**. A single
-security rebased to 100 is explicitly not a licensing workaround. Only new
+security rebased to a percentage return is explicitly not a licensing workaround. Only new
 experiments created with that approval can enter the public projection; synthetic
 fixtures and previously unapproved records never publish automatically.
 
 Public curves compare participants from the latest eligible experiment, all
-starting at 100, with matched SPY session dates. SPY uses adjusted buy-and-hold
+starting at 0% return, with matched SPY session dates. SPY uses adjusted buy-and-hold
 returns before costs; agents include trading costs. Missing benchmarks stay
 missing. Unrelated runs are not joined into a fictitious continuous portfolio.
 Activity shows buy/sell and historical session date, not simulated execution
@@ -143,9 +143,15 @@ prices, account quantities, strategy details or purported live trade times.
 
 ## Storage, CI and rollout
 
-Existing schema 2 and runtime role `parallax_app_v2` are reused; no migration is
-needed. Experiments/events remain immutable and runtime permissions unchanged.
-The mutable `market_state` stores provider caches and budgets only.
+Migration `003_live_studies.sql` adds mutable study/account state and append-only
+input snapshots, percentage valuations and events. Apply it on an isolated Neon
+branch before production and preview. Grant `parallax_app_v2` SELECT/INSERT/UPDATE
+on `live_studies` and SELECT/INSERT on `live_snapshots`, `live_points`, `live_events`;
+append-only tables retain immutable triggers and no runtime update/delete grants.
+The mutable `market_state` stores provider caches and quota metadata. The runtime
+role remains nonprivileged; production and preview credentials were rotated during
+this rollout. Migration runners need an owner role; runtime credentials are not
+used in CLI tests or printed in traceback logs.
 
 CI covers PostgreSQL, backend coverage, proxy authorization, browser flows and
 both container builds. Verify the protected candidate, advance `main`, then
@@ -153,3 +159,24 @@ expose only production aliases through Standard Protection. Confirm anonymous
 public access succeeds while private reads, writes, exports and old immutable
 URLs remain protected. Production stays empty until the owner creates real,
 properly licensed research; browser fixtures use a temporary local database.
+
+## Ongoing scheduling
+
+See [ongoing study design](ongoing-studies.md). The Cloudflare Worker
+`parallax-lab-scheduler` triggers once per minute and uses a KV-cached private
+schedule to avoid waking Neon outside windows. It refreshes schedules hourly
+and after owner create/pause/resume actions. Configure the same random
+`SCHEDULER_TOKEN` Secret binding in Cloudflare and
+`PARALLAX_SCHEDULER_TOKEN` Production Secret in Vercel. Set
+`PARALLAX_SCHEDULER_URL=https://parallax-lab-scheduler.pdeng-parallax.workers.dev`
+as server configuration. Neither key uses NEXT_PUBLIC. Preview has no scheduler
+secret or provider credentials. The machine bridge exposes only plan/tick
+operations and rejects browser cookies and the regular API bearer key.
+
+Ongoing Tiingo calls share a conservative 5/min, 35/hour, 120/rolling-day budget
+with legacy EOD/news calls. An additional 500-symbol/month and 800 MB/month
+transfer guard reserves capacity before I/O; Starter's documented ceilings are
+50/hour, 1,000/day and 1 GB/month. Other applications using the same Tiingo account
+may consume those provider limits; upstream cooldowns still apply. Corporate
+actions require the relevant Tiingo entitlement. Unverified actions block the
+window. No paid plan is activated by this setup.

@@ -47,3 +47,26 @@ def test_large_export_is_streamed_without_content_length(tmp_path):
         assert len(exported.content) > 4_500_000
         assert "content-length" not in exported.headers
         assert exported.json() == detail
+
+
+def test_new_workspace_is_empty_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("PARALLAX_SEED_DEMO", raising=False)
+    monkeypatch.delenv("PATRICK_SEED_DEMO", raising=False)
+    url = f"sqlite:///{tmp_path / 'empty.db'}"
+    for _ in range(2):
+        with TestClient(create_app(url)) as client:
+            assert client.get("/api/v1/experiments").json() == {"experiments": []}
+
+
+@pytest.mark.parametrize("override", [None, True])
+def test_hosted_workspace_never_seeds_demo_data(tmp_path, monkeypatch, override):
+    from parallax_lab.storage import open_store
+    # Real store, but isolate this startup policy test from external Postgres.
+    isolated = open_store(f"sqlite:///{tmp_path / 'hosted.db'}")
+    monkeypatch.setattr("parallax_lab.main.open_store", lambda _url: isolated)
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("PARALLAX_API_TOKEN", "x" * 32)
+    monkeypatch.setenv("PARALLAX_SEED_DEMO", "1")
+    with TestClient(create_app("postgresql://test-only", seed_demo=override)) as client:
+        result = client.get("/api/v1/experiments", headers={"Authorization": f"Bearer {'x' * 32}"})
+        assert result.json() == {"experiments": []}

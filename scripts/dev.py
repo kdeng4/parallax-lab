@@ -37,6 +37,7 @@ def main() -> int:
         processes.append(subprocess.Popen(
             ['npm', 'run', 'dev', '--', '--hostname', '127.0.0.1', '--port', '3000'],
             cwd=ROOT / 'apps/web', start_new_session=True,
+            env={**os.environ, 'PARALLAX_LOCAL_WRITE_ACCESS': '1'},
         ))
         print('Parallax Lab: frontend port 3000 · API port 8000 · paper / synthetic only', flush=True)
         while all(process.poll() is None for process in processes):

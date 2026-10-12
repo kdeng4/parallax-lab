@@ -219,3 +219,14 @@ test('failed experiment selection never presents previous results as the new exp
   await expect(page.getByTestId('equity-chart')).not.toBeVisible();
   await expect(page.getByRole('link', { name: 'Export', exact: true })).not.toBeVisible();
 });
+
+test('view-only identity sees no enabled experiment creation controls', async ({ page }) => {
+  await page.route('**/api/session', route => route.fulfill({ json: { canEdit: false, email: null, reason: 'sign_in' } }));
+  await page.goto('/');
+  await expect(page.getByText('Read only. Creating experiments requires an approved editor sign-in.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New experiment', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Start an experiment', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Strategies', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Compare strategies', exact: true })).toBeDisabled();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+});

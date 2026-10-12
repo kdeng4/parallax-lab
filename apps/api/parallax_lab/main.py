@@ -56,8 +56,10 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         app.state.store = store
         seed_setting = os.getenv("PARALLAX_SEED_DEMO")
         if seed_setting is None:
-            seed_setting = os.getenv("PATRICK_SEED_DEMO", "1")
-        should_seed = seed_demo if seed_demo is not None else seed_setting == "1"
+            seed_setting = os.getenv("PATRICK_SEED_DEMO", "0")
+        should_seed = os.getenv("VERCEL") != "1" and (
+            seed_demo if seed_demo is not None else seed_setting == "1"
+        )
         if should_seed and not store.has(DEMO_ID):
             try:
                 store.save(run_experiment(ExperimentInput(name="Opening bell · baseline study"), DEMO_ID))

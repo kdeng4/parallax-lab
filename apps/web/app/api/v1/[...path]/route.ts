@@ -1,5 +1,7 @@
 // This handler runs behind Vercel Authentication for ALL deployed URLs.
 // It is the only caller of the private Python service; credentials stay here.
+import { editorAccess } from '../../../../lib/editor-access.ts';
+
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
@@ -38,6 +40,12 @@ async function proxy(request: Request, context: Context) {
     if (request.headers.get('sec-fetch-site') === 'cross-site') return fail('Cross-origin request rejected', 403);
     if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') {
       return fail('Use application/json', 415);
+    }
+    const access = await editorAccess(request);
+    if (!access.canEdit) {
+      return fail(access.reason === 'not_configured'
+        ? 'Editor authentication is not configured. This workspace is read only.'
+        : 'Only approved editors can create experiments.', access.reason === 'not_configured' ? 503 : 403);
     }
     const parts: Uint8Array[] = [];
     let size = 0;

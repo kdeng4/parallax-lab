@@ -43,3 +43,23 @@ Final CI and deployed-flow results are recorded in `docs/validation.md`.
 The app remains a private, single-user, synthetic-data paper-trading workbench.
 Live market feeds, paid model execution, real orders, multi-user isolation, and
 distributed jobs were not enabled or represented as working.
+
+
+## Follow-up: owner-only editing and sample removal
+
+The original Vercel Authentication boundary limited page access, but did not
+separate viewers with a share link from authorized experiment creators. The
+follow-up adds application-scoped signed identity verification and an explicit
+editor email allowlist on the server, plus a read-only UI. Missing configuration
+fails closed. Cloudflare Access activation requires a separate account-level
+approval; the code must not pretend editor sign-in is usable before activation.
+
+Hosted demo seeding is now disabled unconditionally, and default local seeding is
+off. A new database role and withdrawal of old-role INSERT privileges prevent old
+immutable deployments from creating experiments or re-seeding deleted examples.
+Only the known baseline and deployment audit records are selected for cleanup.
+
+Regression checks cover missing configuration, anonymous and spoofed identities,
+unapproved email, wrong issuer/audience, expired/future/missing-expiry tokens,
+forged signatures, service/global tokens, JWKS failure, approved-owner creation,
+view-only exports and a local opt-in that cannot bypass Vercel authorization.

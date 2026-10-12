@@ -37,7 +37,10 @@ for these values, commit them, or print them in build/test logs.
 | --- | --- |
 | `PARALLAX_DATABASE_URL` | Pooled PostgreSQL URL for a runtime role with SELECT/INSERT privileges only |
 | `PARALLAX_API_TOKEN` | Random bearer token of at least 32 characters, shared by the two services |
-| `PARALLAX_SEED_DEMO` | `1` seeds one deterministic baseline example; `0` disables seeding |
+| `PARALLAX_SEED_DEMO` | `0`; hosted deployments never seed, even if set to `1` |
+| `PARALLAX_ACCESS_ISSUER` | Exact HTTPS Cloudflare Access team origin |
+| `PARALLAX_ACCESS_AUDIENCE` | AUD tag of this application |
+| `PARALLAX_EDITOR_EMAILS` | Explicit comma-separated approved editor emails; no automatic grants |
 
 Use different database branches and tokens for production and preview. A hosted
 API fails startup when its PostgreSQL URL or token is missing. Local development
@@ -66,7 +69,10 @@ runtime role additionally has no such grants.
 Add the intended subdomain to the Vercel project, use the exact CNAME target
 returned by Vercel, and create a DNS-only CNAME in Cloudflare. Keep existing
 records untouched. Vercel terminates HTTPS and enforces project authentication.
-R2 and Cloudflare Access are not required for this architecture.
+The proposed editor login uses Cloudflare Access. Access activation is currently
+blocked pending explicit approval; DNS remains unchanged until activation.
+Creating an Access application requires proxying only the Parallax subdomain,
+with Full (strict) TLS to Vercel. Do not change unrelated hostnames.
 
 Before release, run CI (including real PostgreSQL, frontend proxy tests, browser
 workflows, and container builds). Then verify the protected preview: health,
@@ -100,3 +106,50 @@ policy is assumed to exist.
   https://vercel.com/patrick-db62/parallax-lab/settings/git.
 
 See [validation.md](validation.md) for observed checks and limitations.
+
+## Editor authorization and empty workspaces
+
+Vercel page access and app edit permission are separate. Every POST to the public
+experiment endpoint verifies an RS256 Cloudflare Access application JWT against
+the configured issuer's rotating JWKS, audience, expiry, issued-at time and
+nonempty user identity. Only a verified email in `PARALLAX_EDITOR_EMAILS` may
+create an experiment. Claimed email headers, service identities, global Access
+tokens and Vercel share links do not grant write permission. Failed verification
+or absent configuration leaves the workspace read only. GET requests retain the
+existing Vercel Authentication boundary. No public edit/delete API exists.
+
+The initial editor allowlist is the verified owner account from Vercel; its value
+is kept in Vercel settings, not in this public repository. Adding another editor
+requires the owner to approve that identity, update the Access application policy
+and the server allowlist, then redeploy. Keep application sessions at eight hours
+or less. Revocation requires updating both controls; redeploying the allowlist
+blocks an otherwise valid existing token at the application boundary.
+
+Proposed Access configuration awaiting approval:
+
+- Organization: Parallax Lab, `pdeng-parallax.cloudflareaccess.com`.
+- One self-hosted app for `parallax.pdeng.pp.ua`, eight-hour sessions.
+- Allow only the owner email, authenticated by Cloudflare or one-time email PIN.
+- Enable HttpOnly and binding cookies. Do not create an Everyone/bypass policy.
+- Keep Vercel Authentication for All Deployments. Raw Vercel URLs still require a
+  valid editor JWT to write; shared Vercel pages are view only.
+
+**Current activation status:** Cloudflare Access is not enabled on the account.
+Automatic approval review rejected organization creation as an account-level
+security change requiring explicit approval. Issuer and audience must remain
+unset until the actual organization and app are provisioned and verified. This
+means nobody, including the owner, can create a hosted experiment yet.
+
+New databases start empty. The seed fixture remains available only for isolated
+local tests by explicitly setting `PARALLAX_SEED_DEMO=1`. `scripts/dev.py` and
+localhost-only Compose opt in to local writes; Vercel ignores that opt-in.
+The browser suite seeds its own temporary database and does not touch Neon.
+
+For this security rollout, use a new runtime role with the same minimal
+SELECT/INSERT grants, deploy its credentials, then revoke INSERT on experiments
+and events from the old role. This also invalidates writes from old immutable
+Vercel deployments. Never roll back to a deployment without the editor guard.
+The operator can remove specifically identified seed/audit rows in one locked
+transaction, briefly disabling only the two immutable-record triggers and
+re-enabling them before commit. Do not remove actual research records or weaken
+runtime privileges. Verify both environments remain empty after a cold start.

@@ -18,6 +18,8 @@ services:
       start_period: 10s
     restart: unless-stopped
   web:
+    environment:
+      PARALLAX_LOCAL_WRITE_ACCESS: '1'
     build:
       context: .
       dockerfile: infra/web.Dockerfile

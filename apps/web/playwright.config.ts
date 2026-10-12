@@ -34,7 +34,7 @@ export default defineConfig({
     {
       command: 'npm run dev -- --hostname 127.0.0.1 --port 3100',
       url: 'http://127.0.0.1:3100',
-      env: { API_BASE_URL: 'http://127.0.0.1:8010', NEXT_TELEMETRY_DISABLED: '1' },
+      env: { API_BASE_URL: 'http://127.0.0.1:8010', NEXT_TELEMETRY_DISABLED: '1', PARALLAX_LOCAL_WRITE_ACCESS: '1' },
       timeout: 90_000,
       reuseExistingServer: false,
     },

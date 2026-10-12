@@ -29,7 +29,7 @@ async function proxy(request: Request, context: Context) {
   }
 
   const access = await editorAccess(request);
-  if (!access.canView) return fail('Sign in with an approved Google account to access the private workspace.',
+  if (!access.canView) return fail("Sign in with the owner's GitHub account to access the private workspace.",
     access.reason === 'not_configured' ? 503 : access.reason === 'not_approved' ? 403 : 401);
 
   let body: Uint8Array | undefined;

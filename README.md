@@ -21,7 +21,7 @@ frontend to a hosted API.
 
 The homepage exposes agent names and eligible published performance/activity only.
 All market/news data, settings and experiments live under `/workspace`, protected
-by a verified, allowlisted Google identity through Neon Auth. See
+by the owner's GitHub identity through Neon Auth, matched by immutable user ID. See
 [deployment setup](docs/deployment.md) for OAuth and provider credentials.
 
 The public chart compares indexed agent portfolios with matched SPY sessions.

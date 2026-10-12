@@ -51,7 +51,7 @@ call the Next.js same-origin proxy; credentials and provider requests belong on
 the API server. Local development has no user authentication and remains on loopback. The
 container configuration binds published ports to loopback by default. Hosted deployments use an explicit public projection and a private FastAPI
 service with a server-only bearer token. Every research proxy read and write
-requires an approved Neon Google identity. Vercel protects previews and immutable
+requires the owner's Neon GitHub identity, matched by numeric GitHub user ID. Vercel protects previews and immutable
 deployment URLs. The workspace has an owner allowlist, not multi-tenant data access.
 
 Hosted storage uses Neon PostgreSQL with independent production and preview

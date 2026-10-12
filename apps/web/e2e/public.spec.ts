@@ -38,8 +38,8 @@ test('licensed projection renders all agent lines and a distinguishable market b
   await page.screenshot({ path: 'test-results/public-chart.png', fullPage: true });
 });
 
-test('sign-in page reports unconfigured Google without offering password registration', async ({ page }) => {
+test('sign-in page reports unconfigured GitHub without offering password registration', async ({ page }) => {
   await page.goto('/auth/sign-in');
-  await expect(page.getByText('Owner sign-in is awaiting Google setup.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Owner sign-in is awaiting GitHub setup.', { exact: false })).toBeVisible();
   await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
 });

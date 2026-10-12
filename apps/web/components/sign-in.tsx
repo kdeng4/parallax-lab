@@ -9,12 +9,12 @@ export function SignIn({ configured }: { configured: boolean }) {
   async function signIn() {
     setBusy(true); setError('');
     try {
-      const result = await auth.signIn.social({ provider: 'google', callbackURL: '/workspace', errorCallbackURL: '/auth/sign-in' });
+      const result = await auth.signIn.social({ provider: 'github', callbackURL: '/workspace', errorCallbackURL: '/auth/sign-in' });
       if (result.error) throw new Error('Sign-in failed');
-    } catch { setError('Google sign-in could not complete. Please try again.'); setBusy(false); }
+    } catch { setError('GitHub sign-in could not complete. Please try again.'); setBusy(false); }
   }
-  return <div>{configured ? <button className="button primary" disabled={busy} onClick={() => void signIn()}>{busy ? 'Connecting…' : 'Continue with Google'}</button>
-    : <p role="status">Owner sign-in is awaiting Google setup. The public dashboard remains available.</p>}
+  return <div>{configured ? <button className="button primary" disabled={busy} onClick={() => void signIn()}>{busy ? 'Connecting…' : 'Continue with GitHub'}</button>
+    : <p role="status">Owner sign-in is awaiting GitHub setup. The public dashboard remains available.</p>}
     {error && <p role="alert">{error}</p>}</div>;
 }
 

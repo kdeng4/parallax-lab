@@ -2,6 +2,15 @@
 
 Baseline: main `73d09b21b19277d46e831c99db8bb43570ff209d`.
 
+Follow-up: the owner requested GitHub-only login after deployment `5acfc83`.
+Authorization now uses GitHub account ID `49372435` (`kdeng4`) instead of Google
+email allowlists. Alternative sign-in and account-linking routes are rejected;
+other Neon authentication methods must also be disabled before activation.
+The browser credential-protection gate prevents completing OAuth app
+registration automatically. Private access stays closed until credentials are
+configured and an owner session is verified. The initial Google audit below
+describes the previous revision, not an active alternative login method.
+
 Before implementation, the audit found:
 
 1. The Next proxy authorizes writes only; every read, including exports and raw

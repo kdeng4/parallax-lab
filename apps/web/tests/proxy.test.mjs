@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { GET, POST } from '../app/api/v1/[...path]/route.ts';
 import { GET as publicDashboard } from '../app/api/public/dashboard/route.ts';
 import { GET as sessionRoute } from '../app/api/session/route.ts';
-import { authorizeGoogle, editorAccess } from '../lib/editor-access.ts';
+import { authorizeGitHub, editorAccess } from '../lib/editor-access.ts';
+import { allowedAuthRequest } from '../lib/auth-policy.ts';
 
 const oldFetch = globalThis.fetch;
 const oldEnv = { ...process.env };
@@ -17,8 +18,8 @@ function local() { delete process.env.VERCEL; process.env.PARALLAX_LOCAL_WRITE_A
 beforeEach(() => {
   process.env.VERCEL = '1'; process.env.PARALLAX_API_TOKEN = token;
   process.env.BACKEND_INTERNAL_URL = 'https://private.example';
-  process.env.PARALLAX_EDITOR_EMAILS = 'owner@example.com';
-  delete process.env.NEON_AUTH_GOOGLE_READY;
+  process.env.PARALLAX_OWNER_GITHUB_ID = '49372435';
+  delete process.env.NEON_AUTH_GITHUB_READY;
   calls = [];
   globalThis.fetch = async (url, init) => { calls.push({ url: String(url), init }); return Response.json({ ok: true }); };
 });
@@ -27,7 +28,7 @@ afterEach(() => { process.env = { ...oldEnv }; globalThis.fetch = oldFetch; });
 for (const path of ['health', 'catalog', 'market/overview', 'context/overview', 'experiments',
   'experiments/00000000-0000-4000-8000-000000000000', 'experiments/00000000-0000-4000-8000-000000000000/events',
   'experiments/00000000-0000-4000-8000-000000000000/export']) {
-  test(`private ${path} fails closed without a Google session`, async () => {
+  test(`private ${path} fails closed without a GitHub session`, async () => {
     const response = await GET(request(path, 'GET', { authorization: `Bearer ${token}`, cookie: 'forged=1',
       'cf-access-jwt-assertion': 'forged', 'x-vercel-authenticated-user': 'owner@example.com' }), context(path));
     assert.equal(response.status, 503); assert.equal(calls.length, 0);
@@ -88,20 +89,54 @@ test('approved local write streams the response and keeps the service key server
   assert.equal((await response.text()).includes(token), false);
 });
 const verified = email => ({ user: { email, emailVerified: true }, session: { expiresAt: new Date(Date.now() + 3600000) } });
-test('only the allowlisted verified Google owner can edit', () => {
-  assert.equal(authorizeGoogle(verified('OWNER@example.com'), [{ providerId: 'google' }], 'owner@example.com').canEdit, true);
-  assert.equal(authorizeGoogle(verified('other@example.com'), [{ providerId: 'google' }], 'owner@example.com').canView, false);
+const owner = [{ providerId: 'github', accountId: '49372435' }];
+test('only the immutable GitHub owner ID grants private reads and writes', () => {
+  const access = authorizeGitHub(verified('owner@example.com'), owner, '49372435');
+  assert.equal(access.canView, true); assert.equal(access.canEdit, true);
+  // Matching email, a recycled username, or legacy viewer configuration cannot grant access.
+  process.env.PARALLAX_VIEWER_EMAILS = 'owner@example.com';
+  const other = authorizeGitHub(verified('owner@example.com'), [{ providerId: 'github', accountId: '12345' }], '49372435');
+  assert.equal(other.canView, false); assert.equal(other.canEdit, false);
 });
-test('explicitly approved viewers can read but cannot edit', () => {
-  const access = authorizeGoogle(verified('viewer@example.com'), [{ providerId: 'google' }], 'owner@example.com', 'viewer@example.com');
-  assert.equal(access.canView, true); assert.equal(access.canEdit, false);
+test('private email and a changed email do not lock out the same GitHub identity', () => {
+  for (const email of [null, 'changed@example.com'])
+    assert.equal(authorizeGitHub(verified(email), owner, '49372435').canEdit, true);
 });
-test('unverified, expired, missing and non-Google identities are denied', () => {
-  for (const session of [null, { ...verified('owner@example.com'), user: { email: 'owner@example.com', emailVerified: false } },
+test('expired, missing and non-GitHub identities are denied', () => {
+  for (const session of [null, { user: {}, session: {} },
     { ...verified('owner@example.com'), session: { expiresAt: '2000-01-01' } },
     { ...verified('owner@example.com'), session: { expiresAt: 'invalid' } }])
-    assert.equal(authorizeGoogle(session, [{ providerId: 'google' }], 'owner@example.com').canView, false);
-  assert.equal(authorizeGoogle(verified('owner@example.com'), [{ providerId: 'credential' }], 'owner@example.com').canEdit, false);
+    assert.equal(authorizeGitHub(session, owner, '49372435').canView, false);
+  for (const providerId of ['google', 'credential'])
+    assert.equal(authorizeGitHub(verified('owner@example.com'), [{ providerId, accountId: '49372435' }], '49372435').canEdit, false);
+  assert.equal(authorizeGitHub(verified('owner@example.com'), [{ providerId: 'github' }], '49372435').canEdit, false);
+});
+test('owner setting accepts one numeric ID, never a username, email or list', () => {
+  for (const id of ['', 'kdeng4', 'owner@example.com', '49372435,12345', '049372435'])
+    assert.equal(authorizeGitHub(verified('owner@example.com'), owner, id).reason, 'not_configured');
+});
+test('legacy Google settings cannot activate GitHub authorization', async () => {
+  process.env.NEON_AUTH_BASE_URL = 'https://auth.example';
+  process.env.NEON_AUTH_COOKIE_SECRET = 'x'.repeat(40);
+  process.env.NEON_AUTH_GOOGLE_READY = '1';
+  process.env.PARALLAX_EDITOR_EMAILS = 'owner@example.com';
+  assert.equal((await editorAccess(request())).reason, 'not_configured');
+});
+test('auth proxy permits GitHub identity login and rejects alternate providers or expanded scopes', async () => {
+  const social = body => request('unused', 'POST', {}, JSON.stringify(body));
+  assert.equal(await allowedAuthRequest(social({ provider: 'github', callbackURL: '/workspace' }), ['sign-in', 'social']), true);
+  for (const body of [{ provider: 'google' }, { provider: 'github', scopes: ['repo'] },
+    { provider: 'github', additionalParams: { scope: 'repo' } }])
+    assert.equal(await allowedAuthRequest(social(body), ['sign-in', 'social']), false);
+  assert.equal(await allowedAuthRequest(request('unused', 'POST', {}, '{'), ['sign-in', 'social']), false);
+  assert.equal(await allowedAuthRequest(social({ provider: 'google' }), ['sign-in/social']), false);
+});
+test('auth proxy rejects password, email signup and account linking while preserving session endpoints', async () => {
+  for (const path of ['sign-up/email', 'sign-in/email', 'sign-in/email-otp', 'link-social', 'set-password', 'change-email'])
+    assert.equal(await allowedAuthRequest(request('unused', 'POST', {}, '{}'), path.split('/')), false);
+  assert.equal(await allowedAuthRequest(request('unused', 'POST', {}, '{}'), ['sign-up/email']), false);
+  for (const path of ['get-session', 'sign-out', 'list-accounts', 'callback/github'])
+    assert.equal(await allowedAuthRequest(request(), path.split('/')), true);
 });
 test('session endpoint is private-cache only and grants no rights when unconfigured', async () => {
   const response = await sessionRoute(request());

@@ -76,7 +76,7 @@ def test_public_projection_and_benchmark_hide_settings_prices_and_quantities(sto
     monkeypatch.setenv('PARALLAX_PUBLIC_PERFORMANCE_APPROVED', '1')
     result = public_dashboard(store)
     assert len(result['series']) == 4
-    assert all(series['points'][0]['value'] == 100 for series in result['series'])
+    assert all(series['points'][0]['value'] == 0 for series in result['series'])
     assert result['series'][-1]['benchmark'] is True
     assert len(result['series'][-1]['points']) == 61
     serialized = json.dumps(result)
@@ -190,7 +190,7 @@ def test_daily_experiment_benchmark_aligns_sessions_and_preserves_missing_data(t
         assert len(result['series']) == (4 if benchmark_available else 3)
         if benchmark_available:
             points = result['series'][-1]['points']
-            assert points[0]['value'] == 100 and points[1]['value'] == 102
+            assert points[0]['value'] == 0 and points[1]['value'] == 2
             assert [p['date'] for p in points] == [p['date'] for p in result['series'][0]['points']]
 
 

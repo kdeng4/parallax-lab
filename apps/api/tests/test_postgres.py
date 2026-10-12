@@ -101,3 +101,43 @@ def test_postgres_market_cache_serializes_workers_and_persists_budget(database_u
     restarted = MarketCache(PostgresStore(database_url))
     assert restarted.claim(key, provider, 1_790_000_010, ((3600, 1),))[0]["data"] == {"price": 123}
     assert restarted.claim(key + "-other", provider, 1_790_000_010, ((3600, 1),))[0]["error"] == "budget_exhausted"
+
+
+def test_postgres_forward_accounts_snapshots_leases_and_atomic_rollback(database_url, monkeypatch):
+    from datetime import UTC, datetime
+    from parallax_lab.live_feeds import snapshot
+    from parallax_lab.live_schemas import StudyInput
+    from parallax_lab.live_service import LiveService
+    from parallax_lab.market_feeds import MarketService
+    clock = [datetime(2026, 10, 12, 14, tzinfo=UTC).timestamp()]
+    store = PostgresStore(database_url)
+    market = MarketService(store, network=True, token='test-transport-only', clock=lambda: clock[0], persistent_tiingo=True)
+    live = LiveService(store, market)
+    def quotes(symbols):
+        return {symbol: {'price': 100, 'as_of': live.now().isoformat(), 'source': 'Isolated test transport'}
+                for symbol in set(symbols) | {'SPY'}}
+    monkeypatch.setattr(live.feeds, 'quotes', quotes)
+    monkeypatch.setattr(live.feeds, 'window_snapshot', lambda symbols, since: snapshot('shared_window_input', live.now(),
+        quotes=quotes(symbols), actions=[], news=[], events=[], news_sources=[{'name': 'Test transport', 'status': 'ok', 'fetched_at': live.now().isoformat()}]))
+    study = live.create(StudyInput(name='Isolated PostgreSQL forward test', symbols=['AAPL', 'MSFT'],
+                                  model_ids=['buy-and-hold'], strategy_ids=['balanced']))
+    live.tick(study['id'])
+    clock[0] += 301
+    live.tick(study['id'])
+    final = live.db.get(study['id'])
+    assert len([item for item in final['events'] if item['type'] == 'fill']) == 2
+    assert final['accounts'][0]['return_pct'] < 0
+    assert live.db.snapshot_detail(study['id'], final['round']['snapshot_id'])['hash'] == final['round']['snapshot_hash']
+    for table in ['live_snapshots', 'live_points', 'live_events']:
+        for sql in [f"UPDATE {table} SET payload='{{}}'::jsonb WHERE study_id=%s", f'DELETE FROM {table} WHERE study_id=%s']:
+            with pytest.raises(psycopg.IntegrityError, match='immutable'):
+                with store.connection() as db:
+                    db.execute(sql, (study['id'],))
+    working = live._claim(study['id'])
+    previous = live.db.get(study['id'])
+    working['last_error'] = 'This write must roll back'
+    with pytest.raises(psycopg.IntegrityError):
+        live._save(working, snapshots=[working['round']['snapshot']])
+    assert live.db.get(study['id']) == previous
+    live.control(study['id'], 'pause')
+    assert live.db.get(study['id'])['status'] == 'paused'

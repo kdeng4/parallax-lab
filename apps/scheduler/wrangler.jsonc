@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "parallax-lab-scheduler",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "BACKEND_ORIGIN": "https://parallax.pdeng.pp.ua" },
+  "kv_namespaces": [{ "binding": "PLAN", "id": "fba2918bda6b411e878e5e57739054a8" }],
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true }
+}

@@ -22,6 +22,8 @@ from .providers import ProviderConfigurationError, ProviderError
 from .schemas import SYMBOLS, ExperimentInput, WatchlistInput
 from .storage import Store, open_store
 from .strategy import load_strategies
+from .live_schemas import StudyInput
+from .live_service import LiveService
 
 def stream_json(value: dict, *, status_code: int = 200, headers: dict | None = None, indent=None):
     def chunks():
@@ -91,6 +93,15 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def store() -> Store:
         return app.state.store
 
+    def live():
+        return LiveService(store(), app.state.market, client=getattr(app.state, 'openai_client', None))
+
+    def study_or_404(study_id):
+        detail = live().db.get(str(study_id))
+        if detail is None:
+            raise HTTPException(404, 'Study not found')
+        return detail
+
     def get_or_404(experiment_id: UUID) -> dict:
         detail = store().get(str(experiment_id))
         if detail is None:
@@ -108,6 +119,10 @@ def create_app(database_url: str | None = None) -> FastAPI:
         return {"models": available_models(),
                 "openai": {"configured": bool(available_openai_models()), "max_calls_per_experiment": MAX_CLOUD_CALLS,
                            "max_calls_per_minute": OPENAI_LIMITS[0][1], "max_calls_per_day": OPENAI_LIMITS[1][1]},
+                "live": {"available": live().readiness() is None, "requirement": live().readiness(),
+                         "scheduler_configured": len(os.getenv('PARALLAX_SCHEDULER_TOKEN', '')) >= 32,
+                         "max_active_studies": 2, "max_tickers": 10, "max_pairs": 9,
+                         "mark_interval_minutes": 5, "cloud_calls_per_tick": 2},
                 "strategies": [s.model_dump(exclude={"config"}) for s in load_strategies().values()],
                 "symbols": app.state.market.watchlist.get()["symbols"], "data_source": "synthetic" if fixture_mode else "tiingo",
                 "interval": "1m" if fixture_mode else "1d", "max_bars": 1440 if fixture_mode else MAX_REPLAY_BARS,
@@ -117,6 +132,54 @@ def create_app(database_url: str | None = None) -> FastAPI:
     @app.get('/api/v1/public/dashboard')
     def public_summary():
         return public_dashboard(store())
+
+    @app.get('/api/v1/studies')
+    def list_studies():
+        return {'studies': live().db.list()}
+
+    @app.post('/api/v1/studies', status_code=201)
+    def start_study(request: StudyInput):
+        try:
+            detail = live().create(request)
+        except ProviderConfigurationError as error:
+            raise HTTPException(503, str(error)) from None
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        except FeedError:
+            raise HTTPException(503, 'A current, verified quote for every selected ticker and SPY is required. No study was created.') from None
+        return stream_json(detail, status_code=201)
+
+    @app.get('/api/v1/studies/{study_id}')
+    def study(study_id: UUID):
+        return stream_json(study_or_404(study_id))
+
+    @app.get('/api/v1/studies/{study_id}/snapshots/{snapshot_id}')
+    def study_snapshot(study_id: UUID, snapshot_id: UUID):
+        detail = live().db.snapshot_detail(str(study_id), str(snapshot_id))
+        if not detail:
+            raise HTTPException(404, 'Snapshot not found')
+        return stream_json(detail)
+
+    @app.post('/api/v1/studies/{study_id}/{action}')
+    def study_action(study_id: UUID, action: Literal['pause', 'resume', 'check']):
+        study_or_404(study_id)
+        try:
+            if action == 'check':
+                live().tick(str(study_id))
+                detail = study_or_404(study_id)
+            else:
+                detail = live().control(str(study_id), action)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        return stream_json(detail)
+
+    @app.get('/api/v1/scheduler/plan')
+    def scheduler_plan():
+        return {'studies': live().plan()}
+
+    @app.post('/api/v1/scheduler/tick')
+    def scheduler_tick():
+        return live().tick()
 
     @app.get('/api/v1/context/overview')
     def private_context():

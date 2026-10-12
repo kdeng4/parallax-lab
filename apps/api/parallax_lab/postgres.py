@@ -28,7 +28,7 @@ class PostgresStore:
         # migration explicitly with the direct owner connection before deploy.
         try:
             with self.connection() as connection:
-                row = connection.execute("SELECT version FROM schema_migrations WHERE version=2").fetchone()
+                row = connection.execute("SELECT version FROM schema_migrations WHERE version=3").fetchone()
                 if row is None:
                     raise RuntimeError("Run the PostgreSQL migration before starting the API")
         except psycopg.errors.UndefinedTable:

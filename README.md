@@ -27,16 +27,22 @@ All market/news data, settings and experiments live under `/workspace`, protecte
 by the owner's GitHub identity through Neon Auth, matched by immutable user ID. See
 [deployment setup](docs/deployment.md) for OAuth and provider credentials.
 
-The public chart compares indexed agent portfolios with matched SPY sessions.
+The public chart compares percentage returns from 0%, with a matched SPY benchmark.
 It stays empty until real research with suitable publication rights exists.
 Tiingo Starter data is transient and cannot be saved in immutable research;
 persistent replays and public curves require verified data entitlements.
-News/event adapters are implemented, but current baseline algorithms do not use
-news or run continuously. Missing credentials produce explicit connection states.
+Ongoing studies run on weekday windows through Cloudflare, using a shared real
+quote/news corpus and an independent multi-ticker portfolio per model / strategy
+pair. Price-only local controls also receive the corpus but do not interpret news.
+Missing credentials or entitlements produce explicit blocked states.
 
 ## What is implemented
 
-- Model comparison with a fixed strategy; strategy comparison with a fixed model.
+- Forward studies from the current server time, with up to nine model / strategy pairs.
+- Multiple tickers, initial capital, local daily windows and agent-selected execution delays.
+- A shared inspectable news/price snapshot; fresh deferred fills and percentage charts.
+- Durable paper accounts, splits, dividend receivables, pause/resume and insolvency guards.
+- Historical model comparison with a fixed strategy; strategy comparison with a fixed model.
 - Deterministic OHLCV snapshots shared by all participants, with dataset hashes.
 - Daily stock indicators (SMA, RSI, MACD) and attributed currency/rate data.
 - Persistent cross-worker request budgets and provider cooldowns in Neon.
@@ -53,7 +59,8 @@ No live broker orders are implemented. OpenAI replays make real Responses API ca
 at matched decision checkpoints and preserve validated summaries, response model IDs
 and token usage. They require market-data storage rights. Pretrained models may know
 later events; historical results are not prospective tests. Intraday streaming,
-multi-user accounts, continuous agent execution and distributed workers remain later milestones.
+multi-user accounts and live broker execution remain later milestones. See the
+[ongoing study design and audit](docs/ongoing-studies.md) for scheduling, limits and rollout checks.
 
 ## Develop
 

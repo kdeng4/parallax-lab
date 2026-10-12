@@ -21,9 +21,9 @@ test('licensed projection renders all agent lines and a distinguishable market b
   await page.route('**/api/public/dashboard', route => route.fulfill({ json: {
     agents: [{ id: 'one', name: 'Research One' }, { id: 'two', name: 'Research Two' }],
     study: { id: 'test-only', mode: 'historical_paper_replay', recorded_at: '2026-10-12T19:00:00Z' },
-    series: [{ id: 'one', name: 'Research One', benchmark: false, points: [{ date: '2026-10-01T00:00:00Z', value: 100 }, { date: '2026-10-09T00:00:00Z', value: 102 }] },
-      { id: 'two', name: 'Research Two', benchmark: false, points: [{ date: '2026-10-01T00:00:00Z', value: 100 }, { date: '2026-10-09T00:00:00Z', value: 99 }] },
-      { id: 'benchmark', name: 'S&P 500 · SPY', benchmark: true, points: [{ date: '2026-10-01T00:00:00Z', value: 100 }, { date: '2026-10-09T00:00:00Z', value: 101 }] }],
+    series: [{ id: 'one', name: 'Research One', benchmark: false, points: [{ date: '2026-10-01T00:00:00Z', value: 0 }, { date: '2026-10-09T00:00:00Z', value: 2 }] },
+      { id: 'two', name: 'Research Two', benchmark: false, points: [{ date: '2026-10-01T00:00:00Z', value: 0 }, { date: '2026-10-09T00:00:00Z', value: -1 }] },
+      { id: 'benchmark', name: 'S&P 500 · SPY', benchmark: true, points: [{ date: '2026-10-01T00:00:00Z', value: 0 }, { date: '2026-10-09T00:00:00Z', value: 1 }] }],
     activities: [{ id: 'trade', agent: 'Research One', action: 'buy', symbol: 'AAPL', session_date: '2026-10-02' }],
   } }));
   await page.goto('/');
@@ -33,8 +33,8 @@ test('licensed projection renders all agent lines and a distinguishable market b
   await expect(page.getByText('Bought', { exact: true })).toBeVisible();
   await chart.getByRole('button', { name: 'Research One' }).click();
   await expect(chart.locator('svg path')).toHaveCount(2);
-  await page.getByLabel('Inspect performance date').fill('0');
-  await expect(chart.getByText('100.00', { exact: true })).toHaveCount(2);
+  await page.getByLabel('Inspect performance time').fill('0');
+  await expect(chart.locator('.percent-readout').getByText('0.00%', { exact: true })).toHaveCount(2);
   await page.screenshot({ path: 'test-results/public-chart.png', fullPage: true });
 });
 

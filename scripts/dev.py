@@ -39,7 +39,7 @@ def main() -> int:
             cwd=ROOT / 'apps/web', start_new_session=True,
             env={**os.environ, 'PARALLAX_LOCAL_WRITE_ACCESS': '1'},
         ))
-        print('Parallax Lab: frontend port 3000 · API port 8000 · paper / synthetic only', flush=True)
+        print('Parallax Lab: frontend port 3000 · API port 8000 · paper research; market feeds require configuration', flush=True)
         while all(process.poll() is None for process in processes):
             time.sleep(0.5)
         return next((p.returncode for p in processes if p.returncode is not None), 1)

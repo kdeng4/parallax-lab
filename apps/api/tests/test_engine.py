@@ -68,7 +68,7 @@ def test_next_open_execution_and_last_bar_order_is_unfilled(monkeypatch):
     candles[1] = replace(candles[1], open=200, close=200, high=201, low=199)
     monkeypatch.setattr(engine, "generate_candles", lambda *args: tuple(candles))
     seen = []
-    def observed_only(model, strategy, history, allocation):
+    def observed_only(model, strategy, history, allocation, interval="1m"):
         seen.append(history)
         target = strategy.config.max_allocation if len(history) == 1 else allocation
         if len(history) == 60:

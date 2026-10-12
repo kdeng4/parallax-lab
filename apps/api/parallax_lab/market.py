@@ -15,10 +15,33 @@ class Candle:
     high: float
     low: float
     close: float
-    volume: int
+    volume: int | float
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class MarketDataset:
+    candles: tuple[Candle, ...]
+    source: str
+    interval: str
+    provenance: dict
+
+    def __post_init__(self):
+        if self.interval not in ("1m", "1d") or not self.candles:
+            raise ValueError("A dataset needs candles and a supported interval")
+        previous = None
+        for candle in self.candles:
+            instant = datetime.fromisoformat(candle.timestamp.replace("Z", "+00:00"))
+            if instant.tzinfo is None or (previous is not None and instant <= previous):
+                raise ValueError("Candle timestamps must increase and include a timezone")
+            previous = instant
+            prices = (candle.open, candle.high, candle.low, candle.close)
+            if not all(math.isfinite(v) and v > 0 for v in prices) or not (
+                candle.low <= min(candle.open, candle.close) <= max(candle.open, candle.close) <= candle.high
+            ) or not math.isfinite(candle.volume) or candle.volume < 0:
+                raise ValueError("Invalid OHLCV candle")
 
 
 def generate_candles(symbol: str, seed: int, bars: int) -> tuple[Candle, ...]:
@@ -47,5 +70,7 @@ def data_hash(candles: tuple[Candle, ...]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def close_time(candle: Candle) -> str:
-    return (datetime.fromisoformat(candle.timestamp.replace("Z", "+00:00")) + timedelta(seconds=59)).isoformat().replace("+00:00", "Z")
+def close_time(candle: Candle, interval: str = "1m") -> str:
+    # Daily timestamps are normalized session-date labels, not exchange times.
+    seconds = 86_399 if interval == "1d" else 59
+    return (datetime.fromisoformat(candle.timestamp.replace("Z", "+00:00")) + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")

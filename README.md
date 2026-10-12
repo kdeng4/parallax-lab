@@ -4,8 +4,10 @@
 
 Parallax Lab runs independent trading algorithms against the same immutable market
 snapshot, records every decision and fill, and makes results comparable in one
-minimal interface. The first milestone is a working local research application:
-**synthetic market data, local baseline algorithms, simulated funds.**
+minimal interface: **real published market data, local baseline algorithms,
+simulated funds.** Bank of Canada currency/rate indicators are keyless. Tiingo
+daily stock history requires a free personal API token; missing data stays empty.
+See the [market-data audit and setup](docs/market-data-audit-2026-10-12.md).
 
 The phased [implementation plan](docs/implementation-plan.md) maps the full
 design to live data, cloud model execution, distributed workers and production
@@ -19,6 +21,8 @@ frontend to a hosted API.
 
 - Model comparison with a fixed strategy; strategy comparison with a fixed model.
 - Deterministic OHLCV snapshots shared by all participants, with dataset hashes.
+- Cached daily stock indicators (SMA, RSI, MACD) and attributed currency/rate data.
+- Persistent cross-worker request budgets and provider cooldowns in Neon.
 - Momentum, mean-reversion and buy-and-hold reference algorithms.
 - Versioned Markdown strategy configurations.
 - Independent paper accounts, next-bar fills, fees, slippage and long-only limits.
@@ -26,10 +30,9 @@ frontend to a hosted API.
 - Persistent experiment history, sequenced audit trails, filtering and JSON export.
 - A responsive Next.js UI and a validated FastAPI HTTP API.
 
-No live broker orders are implemented. Live feeds, cloud-model experiment
+No live broker orders are implemented. Intraday streaming, cloud-model experiment
 execution, multi-user accounts, NATS workers, MLflow and Kubernetes are later
-milestones. Provider adapters are infrastructure for future integration; demo
-results are never attributed to cloud models.
+milestones. Replay participants remain local algorithms, never labelled as cloud models.
 
 ## Develop
 
@@ -43,7 +46,7 @@ python scripts/dev.py
 
 The frontend listens on port **3000**, and the API on **8000**. The launcher binds
 both to loopback. API documentation is served at `/docs` on the API service.
-An example experiment is seeded once, so the first visit already has results.
+New workspaces start empty. Hosted deployments never seed sample experiments.
 Stop both services with Ctrl+C.
 
 Alternatively, use two terminals:
@@ -62,7 +65,8 @@ New installations store data in `apps/api/.data/parallax-lab.db`, which is ignor
 by Git. Existing local databases are retained when the new database is absent.
 Back up the file with SQLite's backup mechanism when retaining research work. Set
 `PARALLAX_DATABASE_URL` before starting the API to use another local database.
-Set `PARALLAX_SEED_DEMO=0` to skip the initial example. The frontend's
+For isolated fixture testing only, export `PARALLAX_MARKET_SOURCE=synthetic`;
+`PARALLAX_SEED_DEMO=1` optionally creates an example outside Vercel. The frontend's
 `API_BASE_URL` defaults to the API's loopback address for local development.
 The server-side API proxy reads this at runtime. Hosted deployments use a private
 Vercel service binding instead; see [deployment](docs/deployment.md).
@@ -71,7 +75,8 @@ Hosted storage supports PostgreSQL on Neon, with versioned migrations and
 atomic, immutable experiment records. Vercel Authentication protects all hosted
 URLs, and a server-only token protects the private Python API.
 
-No API keys are required for the local research workflow. Never expose provider
+For real local data export `PARALLAX_MARKET_NETWORK=1` and `TIINGO_API_KEY`.
+Never expose provider
 keys via `NEXT_PUBLIC_*`. The `.env.example` documents optional configuration;
 local shell processes require exported variables rather than automatically
 loading the root `.env`.

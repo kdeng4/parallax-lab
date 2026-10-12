@@ -83,3 +83,17 @@ def test_postgres_records_reject_updates_and_deletes(database_url):
             with store.connection() as connection:
                 connection.execute(sql, (detail["id"],))
     assert store.get(detail["id"]) == detail
+
+
+def test_postgres_market_cache_serializes_workers_and_persists_budget(database_url):
+    from parallax_lab.market_cache import MarketCache
+    cache = MarketCache(PostgresStore(database_url))
+    provider, key = str(uuid4()), str(uuid4())
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        claims = list(executor.map(lambda _: cache.claim(key, provider, 1_790_000_000, ((3600, 1),)), range(8)))
+    leases = [lease for _, lease in claims if lease]
+    assert len(leases) == 1
+    cache.finish(key, provider, leases[0], 1_790_000_001, data={"price": 123})
+    restarted = MarketCache(PostgresStore(database_url))
+    assert restarted.claim(key, provider, 1_790_000_010, ((3600, 1),))[0]["data"] == {"price": 123}
+    assert restarted.claim(key + "-other", provider, 1_790_000_010, ((3600, 1),))[0]["error"] == "budget_exhausted"

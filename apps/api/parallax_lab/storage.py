@@ -44,6 +44,10 @@ class Store:
         with self.connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript("""
+                CREATE TABLE IF NOT EXISTS market_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL CHECK (length(value) <= 1048576)
+                );
                 CREATE TABLE IF NOT EXISTS experiments (
                     id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,

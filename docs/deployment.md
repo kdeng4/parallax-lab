@@ -164,3 +164,15 @@ are enabled. The old role has no INSERT privileges, and the new runtime role has
 only the required SELECT/INSERT grants. Main commit `703da57d` automatically
 created READY production deployment `dpl_AstMwSgdaapd4xZeJMdnaUQYKzAP` with
 `source: git`; custom-domain health and empty listing both returned HTTP 200.
+
+## Market data (schema 2)
+
+Apply `002_market_cache.sql` after schema 1 on each branch, then grant the current
+runtime role `SELECT, INSERT, UPDATE ON market_state`. Do not grant mutation rights
+on experiments/events. The migration runner now applies all pending versions.
+
+The existing Free Neon project is reused. External market reads default on only
+in Vercel Production. Keep preview offline unless it has a separate provider
+allocation. Add sensitive `TIINGO_API_KEY` to Production and redeploy to activate
+stock history. Bank of Canada needs no key. See the [market-data audit](market-data-audit-2026-10-12.md)
+for quotas, attribution, private-use terms and activation limitations.

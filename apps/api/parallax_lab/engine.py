@@ -9,7 +9,7 @@ from decimal import ROUND_DOWN, Decimal
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from . import ENGINE_VERSION
-from .market import Candle, close_time, data_hash, generate_candles
+from .market import Candle, MarketDataset, close_time, data_hash, generate_candles
 from .schemas import ExperimentInput
 from .strategy import Strategy, load_strategies
 
@@ -89,10 +89,10 @@ class Account:
                 "before": before, "after": self.snapshot()}
 
 
-def decide(model_id: str, strategy: Strategy, observed: tuple[Candle, ...], current_allocation: float) -> tuple[float, str, dict]:
+def decide(model_id: str, strategy: Strategy, observed: tuple[Candle, ...], current_allocation: float, interval="1m") -> tuple[float, str, dict]:
     """Only the immutable prefix ending at the current close is accessible."""
     config = strategy.config
-    observable = {"observed_bars": len(observed), "as_of": close_time(observed[-1]), "close": observed[-1].close,
+    observable = {"observed_bars": len(observed), "as_of": close_time(observed[-1], interval), "close": observed[-1].close,
                   "lookback": config.lookback, "threshold": config.threshold}
     if model_id == "buy-and-hold":
         return config.max_allocation, "Maintain the configured passive allocation.", observable
@@ -126,7 +126,7 @@ class RunState:
     pending: dict | None = None
 
 
-def metrics(curve: list[dict], trades: list[dict], initial_cash: float) -> dict:
+def metrics(curve: list[dict], trades: list[dict], initial_cash: float, periods_per_year=MINUTES_PER_YEAR) -> dict:
     equities = [p["equity"] for p in curve]
     peak, drawdown = equities[0], 0.0
     for equity in equities:
@@ -134,7 +134,7 @@ def metrics(curve: list[dict], trades: list[dict], initial_cash: float) -> dict:
         drawdown = max(drawdown, (peak - equity) / peak)
     returns = [b / a - 1 for a, b in zip(equities, equities[1:])]
     stdev = statistics.stdev(returns) if len(returns) >= 2 else 0
-    sharpe = statistics.fmean(returns) / stdev * math.sqrt(MINUTES_PER_YEAR) if stdev > 1e-12 else None
+    sharpe = statistics.fmean(returns) / stdev * math.sqrt(periods_per_year) if stdev > 1e-12 else None
     sales = [t["realized_pnl"] for t in trades if t["side"] == "sell"]
     return {"return_pct": number((equities[-1] / initial_cash - 1) * 100),
             "equity": number(equities[-1]), "pnl": number(equities[-1] - initial_cash),
@@ -143,10 +143,16 @@ def metrics(curve: list[dict], trades: list[dict], initial_cash: float) -> dict:
             "trade_count": len(trades)}
 
 
-def run_experiment(request: ExperimentInput, experiment_id: str | None = None) -> dict:
+def run_experiment(request: ExperimentInput, experiment_id: str | None = None, *, dataset: MarketDataset | None = None) -> dict:
     experiment_id = experiment_id or str(uuid4())
     strategies = load_strategies()
-    candles = generate_candles(request.symbol, request.seed, request.bars)
+    # The HTTP layer permits this deterministic fixture only in explicit local test mode.
+    dataset = dataset or MarketDataset(generate_candles(request.symbol, request.seed, request.bars), "synthetic", "1m",
+                                       {"generator": "parallax-lab-v1"})
+    candles, interval = dataset.candles, dataset.interval
+    if len(candles) != request.bars:
+        raise ValueError("Dataset length must match the requested replay")
+    periods_per_year = 252 if interval == "1d" else MINUTES_PER_YEAR
     events: list[dict] = []
 
     def identifier(key: str) -> str:
@@ -181,51 +187,54 @@ def run_experiment(request: ExperimentInput, experiment_id: str | None = None) -
                 else:
                     emit(candle.timestamp, "risk", state, "Order had no executable quantity after account limits.", pending)
                 state.pending = None
-        emit(close_time(candle), "market", None, f"{request.symbol} synthetic one-minute candle closed.",
-             {"bar_index": index, "symbol": request.symbol, "source": "synthetic", "candle": candle.as_dict()})
+        emit(close_time(candle, interval), "market", None, f"{request.symbol} {dataset.source} {interval} candle closed.",
+             {"bar_index": index, "symbol": request.symbol, "source": dataset.source, "interval": interval, "candle": candle.as_dict()})
         for state in states:
             equity = state.account.equity(candle.close)
             allocation = float(state.account.quantity * D(str(candle.close)) / equity)
-            target, summary, observable = decide(state.model_id, state.strategy, candles[:index + 1], allocation)
-            decision_id = emit(close_time(candle), "decision", state, summary,
+            target, summary, observable = decide(state.model_id, state.strategy, candles[:index + 1], allocation, interval)
+            decision_id = emit(close_time(candle, interval), "decision", state, summary,
                                {"target_allocation": target, "current_allocation": allocation, "observable_inputs": observable,
                                 "model_id": state.model_id, "strategy_version": state.strategy.version, "bar_index": index})
             if abs(target - allocation) >= state.strategy.config.rebalance_threshold:
                 order_details = {"target_allocation": target, "decision_id": decision_id, "bar_index": index,
                                  "execution_rule": "next_bar_open", "max_allocation": state.strategy.config.max_allocation}
-                order_id = emit(close_time(candle), "order", state, f"Queue paper allocation target of {target * 100:.0f}% for the next open.", order_details)
+                order_id = emit(close_time(candle, interval), "order", state, f"Queue paper allocation target of {target * 100:.0f}% for the next open.", order_details)
                 state.pending = {**order_details, "order_id": order_id}
-            state.curve.append({"timestamp": close_time(candle), "equity": number(equity)})
+            state.curve.append({"timestamp": close_time(candle, interval), "equity": number(equity)})
 
     runs = []
     for state in states:
         if state.pending:
-            emit(close_time(candles[-1]), "risk", state, "Last-bar order left unfilled: no next market open is available.",
+            emit(close_time(candles[-1], interval), "risk", state, "Last-bar order left unfilled: no next market open is available.",
                  {**state.pending, "status": "unfilled", "reason": "end_of_dataset"})
-        run_metrics = metrics(state.curve, state.trades, request.initial_cash)
+        run_metrics = metrics(state.curve, state.trades, request.initial_cash, periods_per_year)
         runs.append({"id": state.id, "model_id": state.model_id, "model_name": MODELS[state.model_id]["name"],
                      "provider": MODELS[state.model_id]["provider"], "strategy_id": state.strategy.id,
                      "strategy_name": state.strategy.name, "strategy_version": state.strategy.version,
                      **run_metrics, "cash": number(state.account.cash), "position_qty": number(state.account.quantity),
                      "equity_curve": state.curve, "trades": state.trades})
-        emit(close_time(candles[-1]), "completed", state, f"Replay completed with {len(state.trades)} paper fills.",
+        emit(close_time(candles[-1], interval), "completed", state, f"Replay completed with {len(state.trades)} paper fills.",
              {**run_metrics, "final_account": state.account.snapshot(), "mark_price": candles[-1].close})
     events.sort(key=lambda event: event["timestamp"])
     for sequence, event in enumerate(events, 1):
         event["sequence"] = sequence
     return {"id": experiment_id, "name": request.name or f"{request.symbol} · {'model' if request.comparison == 'models' else 'strategy'} comparison",
             "comparison": request.comparison, "symbol": request.symbol, "status": "completed", "created_at": datetime.now(UTC).isoformat(),
-            "data_source": "synthetic", "seed": request.seed, "bars": request.bars, "initial_cash": request.initial_cash,
+            "data_source": dataset.source, "interval": interval, "seed": request.seed if dataset.source == "synthetic" else None,
+            "bars": request.bars, "initial_cash": request.initial_cash,
             "participants": len(runs), "best_return_pct": max(r["return_pct"] for r in runs),
             "strategy_name": strategies[request.strategy_ids[0]].name if len(request.strategy_ids) == 1 else "Multiple strategies",
             "data_hash": data_hash(candles), "costs": {"fee_bps": FEE_BPS, "slippage_bps": SLIPPAGE_BPS},
             "runs": runs, "candles": [c.as_dict() for c in candles], "events": events,
-            "metadata": {"engine_version": ENGINE_VERSION, "python_version": sys.version.split()[0], "request": request.model_dump(), "dataset": {"source": "synthetic", "generator": "parallax-lab-v1", "hash": data_hash(candles)},
+            "metadata": {"engine_version": ENGINE_VERSION, "python_version": sys.version.split()[0], "request": request.model_dump(exclude={"seed"} if dataset.source != "synthetic" else set()),
+                         "dataset": {**dataset.provenance, "source": dataset.source, "interval": interval, "hash": data_hash(candles)},
                          "strategies": [strategies[s].model_dump() for s in request.strategy_ids],
                          "models": [{**MODELS[m], "implementation_version": ENGINE_VERSION} for m in request.model_ids],
                          "execution": {"signal": "bar_close", "fill": "next_bar_open", "position_mode": "long_only", "leverage": 1,
                                        "fee_bps": FEE_BPS, "slippage_bps": SLIPPAGE_BPS, "fractional_share_precision": 6,
                                        "final_position": "marked_to_last_close_not_liquidated"},
-                         "metrics": {"sharpe": "sample standard deviation of one-minute equity returns; zero risk-free rate; sqrt(252*390) annualization; illustrative on short synthetic paths",
+                         "metrics": {"periods_per_year": periods_per_year,
+                                     "sharpe": f"sample standard deviation of {interval} equity returns; zero risk-free rate; sqrt({periods_per_year}) annualization; descriptive research statistic",
                                      "win_rate": "percentage of sell fills with positive fee-inclusive realized P&L; partial exits each count once; 0 when no sells",
                                      "drawdown": "peak-to-trough equity decline including initial capital; marked at every candle close"}}}

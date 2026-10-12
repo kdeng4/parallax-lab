@@ -75,6 +75,21 @@ test('proxy rejects cross-site writes, wrong media types, large bodies and unexp
   assert.equal(upstreamCalls, 0);
 });
 
+test('market reads expose only the fixed overview and cannot force provider refreshes', async () => {
+  upstream = async (url, init) => {
+    assert.equal(String(url), 'https://private-api.example/api/v1/market/overview');
+    assert.equal(init.headers.get('authorization'), `Bearer ${serviceToken}`);
+    assert.equal(init.headers.get('cookie'), null);
+    return Response.json({ stocks: [] });
+  };
+  const response = await GET(new Request('https://lab.example/api/v1/market/overview?force=1&url=https://evil.example'), context(['market', 'overview']));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await POST(request(), context(['market', 'overview']))).status, 405);
+  assert.equal((await GET(new Request('https://lab.example/'), context(['market', 'anything']))).status, 404);
+  assert.equal(upstreamCalls, 1);
+});
+
 test('anonymous visitors and claimed identity headers cannot create experiments', async () => {
   const result = await POST(request({}, { 'cf-access-jwt-assertion': '',
     'cf-access-authenticated-user-email': 'owner@example.com', 'x-vercel-authenticated-user': 'owner@example.com',

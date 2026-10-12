@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .engine import MODELS, run_experiment
+from .market_feeds import FeedError, MarketService, MAX_REPLAY_BARS
 from .schemas import SYMBOLS, ExperimentInput
 from .storage import Store, open_store
 from .strategy import load_strategies
@@ -43,6 +44,7 @@ def default_database_url() -> str:
 
 def create_app(database_url: str | None = None, seed_demo: bool | None = None) -> FastAPI:
     api_token = os.getenv("PARALLAX_API_TOKEN", "")
+    fixture_mode = os.getenv("VERCEL") != "1" and os.getenv("PARALLAX_MARKET_SOURCE") == "synthetic"
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -54,6 +56,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         store = open_store(url)
         store.initialize()
         app.state.store = store
+        app.state.market = MarketService(store)
         seed_setting = os.getenv("PARALLAX_SEED_DEMO")
         if seed_setting is None:
             seed_setting = os.getenv("PATRICK_SEED_DEMO", "0")
@@ -70,7 +73,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         yield
 
     app = FastAPI(title="Parallax Lab · paper-trading research", version="0.1.0", lifespan=lifespan,
-                  description="Single-user research API. Synthetic data and local baselines; no live orders.")
+                  description="Private research API. Real daily market snapshots and local baselines; no live orders.")
 
     @app.middleware("http")
     async def protect_api(request: Request, call_next):
@@ -111,7 +114,13 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
     def catalog():
         return {"models": list(MODELS.values()),
                 "strategies": [s.model_dump(exclude={"config"}) for s in load_strategies().values()],
-                "symbols": list(SYMBOLS), "data_source": "synthetic"}
+                "symbols": list(SYMBOLS), "data_source": "synthetic" if fixture_mode else "tiingo",
+                "interval": "1m" if fixture_mode else "1d", "max_bars": 1440 if fixture_mode else MAX_REPLAY_BARS,
+                "replay_available": fixture_mode or bool(app.state.market.network and app.state.market.token)}
+
+    @app.get("/api/v1/market/overview")
+    def market_overview():
+        return app.state.market.overview()
 
     @app.get("/api/v1/experiments")
     def list_experiments():
@@ -119,7 +128,13 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
 
     @app.post("/api/v1/experiments", status_code=201)
     def create_experiment(request: ExperimentInput):
-        detail = run_experiment(request)
+        try:
+            dataset = None if fixture_mode else app.state.market.replay(request.symbol, request.bars)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        except FeedError:
+            raise HTTPException(503, "Verified daily market history is unavailable. Connect Tiingo or wait for the next refresh; no synthetic fallback is used.") from None
+        detail = run_experiment(request, dataset=dataset)
         store().save(detail)
         return stream_json(detail, status_code=201)
 

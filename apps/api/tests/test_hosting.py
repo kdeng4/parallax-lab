@@ -70,3 +70,6 @@ def test_hosted_workspace_never_seeds_demo_data(tmp_path, monkeypatch, override)
     with TestClient(create_app("postgresql://test-only", seed_demo=override)) as client:
         result = client.get("/api/v1/experiments", headers={"Authorization": f"Bearer {'x' * 32}"})
         assert result.json() == {"experiments": []}
+        headers = {"Authorization": f"Bearer {'x' * 32}"}
+        assert client.get("/api/v1/catalog", headers=headers).json()["data_source"] == "tiingo"
+        assert client.post("/api/v1/experiments", headers=headers, json={"bars": 60}).status_code == 503

@@ -16,7 +16,7 @@ function fail(detail: string, status: number) {
 async function proxy(request: Request, context: Context) {
   const { path } = await context.params;
   const route = path.join('/');
-  if (!/^(health|catalog|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
+  if (!/^(health|catalog|market\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
     return fail('Not found', 404);
   }
   if (request.method === 'POST' && route !== 'experiments') return fail('Method not allowed', 405);
@@ -66,7 +66,8 @@ async function proxy(request: Request, context: Context) {
 
   try {
     const url = new URL(`/api/v1/${route}`, origin);
-    url.search = new URL(request.url).search;
+    // Market refresh parameters and arbitrary upstream URLs are never accepted.
+    url.search = route === 'market/overview' ? '' : new URL(request.url).search;
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (token) headers.set('Authorization', `Bearer ${token}`);
     const upstream = await fetch(url, {

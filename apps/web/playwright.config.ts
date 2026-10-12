@@ -27,7 +27,7 @@ export default defineConfig({
       command: 'uv run --frozen uvicorn parallax_lab.main:app --host 127.0.0.1 --port 8010',
       cwd: '../api',
       url: 'http://127.0.0.1:8010/api/v1/health',
-      env: { PARALLAX_DATABASE_URL: `sqlite:///${join(databaseDirectory, 'research.db')}`, PARALLAX_SEED_DEMO: '1' },
+      env: { PARALLAX_DATABASE_URL: `sqlite:///${join(databaseDirectory, 'research.db')}`, PARALLAX_SEED_DEMO: '1', PARALLAX_MARKET_SOURCE: 'synthetic', PARALLAX_MARKET_NETWORK: '0' },
       timeout: 60_000,
       reuseExistingServer: false,
     },

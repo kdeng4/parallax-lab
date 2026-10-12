@@ -1,33 +1,36 @@
-# Parallax Lab · Milestone 1 API contract
+# Parallax Lab · API contract
 
 All endpoints live below `/api/v1` on the FastAPI service. The Next.js app
 proxies `/api/v1/*` to `API_BASE_URL` (default `http://127.0.0.1:8000`).
 Amounts and prices are JSON numbers in USD. Timestamps use UTC ISO 8601.
 Returns, drawdown and win rate are percentages (e.g. `2.5` means 2.5%).
-Historical replay is explicitly synthetic; no live market or provider claims.
+Hosted replay requires real Tiingo adjusted daily candles. Synthetic data is an explicit local test fixture only. Stock prices are end-of-day, not intraday quotes.
 
 ## GET /health
 `{"status":"ok","mode":"paper","storage":"sqlite"}`
 
 ## GET /catalog
-`{"models":[{"id":"momentum","name":"Momentum","provider":"Local baseline","description":"..."}],"strategies":[{"id":"balanced","name":"Balanced momentum","description":"...","markdown":"...","version":"sha256..."}],"symbols":["SPY","QQQ","AAPL","MSFT","NVDA"],"data_source":"synthetic"}`
+`{"models":[{"id":"momentum","name":"Momentum","provider":"Local baseline","description":"..."}],"strategies":[{"id":"balanced","name":"Balanced momentum","description":"...","markdown":"...","version":"sha256..."}],"symbols":["SPY","QQQ","AAPL","MSFT","NVDA"],"data_source":"tiingo","interval":"1d","max_bars":252,"replay_available":false}`
 
 Required baseline model IDs: `momentum`, `mean-reversion`, `buy-and-hold`.
 Required strategy IDs: `balanced`, `conservative`, `responsive`.
 Cloud adapters are separate from baseline IDs and must not fake provider results.
 
+## GET /market/overview
+Returns `stocks`, `macro`, server `as_of`, refresh cadence and indicator methodology. Each series includes its provider, observation date, retrieval time, next refresh eligibility and status. Missing values are null; stale values are explicitly labelled. No arbitrary symbol, URL or force-refresh parameter is supported. See [market-data audit](market-data-audit-2026-10-12.md) for rate budgets and calculation conventions. Responses are private/no-store; provider data is shared in the server-side database cache.
+
 ## GET /experiments
 `{"experiments":[ExperimentSummary]}` newest first.
 
 ## POST /experiments
-Input: `{"name":"Optional user label","comparison":"models","model_ids":["momentum","mean-reversion","buy-and-hold"],"strategy_ids":["balanced"],"symbol":"SPY","seed":42,"initial_cash":100000,"bars":180}`.
+Input: `{"name":"Optional user label","comparison":"models","model_ids":["momentum","mean-reversion","buy-and-hold"],"strategy_ids":["balanced"],"symbol":"SPY","initial_cash":100000,"bars":180}`.
 `comparison` is `models` (one strategy, 2+ models) or `strategies` (one model, 2+ strategies).
 Validate IDs, maximum participants, bounds, duplicate IDs, and a single varied factor.
-Bounds: bars 60–1440, seed 0–4294967295, cash 100–100000000 USD, name 1–100 trimmed characters (omit or null for automatic name).
+Bounds: daily bars 60–252 (local fixtures 60–1440), local fixture seed 0–4294967295, cash 100–100000000 USD, name 1–100 trimmed characters (omit or null for automatic name).
 Runs a bounded deterministic replay synchronously, persists atomically, returns
-ExperimentDetail with HTTP 201. No network API calls are required for this milestone.
+ExperimentDetail with HTTP 201. Uses the shared market cache; if needed, reserves quota and fetches a completed daily snapshot. Missing/stale/insufficient history returns 503 and creates no experiment.
 
-ExperimentSummary: `{"id":"uuid","name":"Morning momentum study","comparison":"models","symbol":"SPY","status":"completed","created_at":"...","data_source":"synthetic","seed":42,"bars":180,"initial_cash":100000,"participants":3,"best_return_pct":1.2}`.
+ExperimentSummary: `{"id":"uuid","name":"Morning momentum study","comparison":"models","symbol":"SPY","status":"completed","created_at":"...","data_source":"tiingo","seed":null,"bars":180,"initial_cash":100000,"participants":3,"best_return_pct":1.2}`.
 
 ## GET /experiments/{id}
 ExperimentDetail = ExperimentSummary plus:
@@ -53,8 +56,7 @@ Download full reproducibility JSON (detail). Include engine version, dataset has
 strategy versions/contents, model configuration and cost assumptions in export metadata.
 
 ## Initial experience
-On first startup seed one deterministic example experiment, named `Opening bell · baseline study`, with three real local baseline algorithms, SPY, seed 42, 180 bars. Repeated startups must not duplicate it. Do not represent local baselines as OpenAI or Anthropic models.
+Workspaces start empty. Hosted seeding is prohibited. Isolated local tests can explicitly enable fixtures and seeding. Local baselines are never represented as OpenAI or Anthropic models.
 
 Errors use FastAPI `detail`. Unknown resources return 404; invalid inputs return 422.
-The default app is a single-user local development workbench. Production authentication,
-live feeds, distributed execution and real-money trading are outside milestone 1.
+Hosted deployments require private service authentication and verified approved-editor identity for writes. Streaming feeds, distributed execution and real-money trading are not implemented.

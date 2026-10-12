@@ -2,13 +2,14 @@
 
 Parallax Lab begins as a modular research application with a functioning event-based
 replay engine. The boundaries below are logical modules in milestone 1; NATS,
-live market ingestion, and distributed workers are planned, not active services.
+intraday streaming and distributed workers are planned. Real daily market ingestion
+and the shared Neon cache are active modules; see [market data](market-data-audit-2026-10-12.md).
 
 ```mermaid
-flowchart LR
+flowchart TD
     UI[Next.js research workbench] -->|same-origin API proxy| API[FastAPI]
     API --> EXP[Validated experiment configuration]
-    EXP --> DATA[Immutable synthetic OHLCV snapshot]
+    EXP --> DATA[Immutable provider OHLCV snapshot]
     DATA --> A[Independent model / strategy runs]
     A --> SIG[Close-bar decision]
     SIG --> RISK[Long-only risk checks]
@@ -26,7 +27,7 @@ flowchart LR
 ## Fair comparison
 
 An experiment chooses one axis. Model comparison fixes a single strategy;
-strategy comparison fixes a single model. Initial cash, symbol, dataset, seed,
+strategy comparison fixes a single model. Initial cash, symbol, dataset,
 bar count, and transaction costs remain identical. Each run receives its own
 account state, while the immutable candle sequence is common. Strategy content
 and data hashes travel with the export. Random run IDs and creation timestamps

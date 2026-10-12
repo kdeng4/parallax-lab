@@ -79,6 +79,17 @@ restart/concurrency, rolling quotas, failed-request accounting, Retry-After,
 stale-data retention, token privacy, proxy restrictions and browser empty/stale
 states. CI includes real PostgreSQL concurrency and migration checks.
 
+Validation on code commit `57fd695a760698b4d0c32c408322afbb0c97e59c`:
+[GitHub Actions run 38290424421](https://github.com/kdeng4/parallax-lab/actions/runs/38290424421)
+passed 148 backend tests (94.79% branch-inclusive coverage), 19 authorization/proxy
+tests and 13 browser workflows, plus the production frontend and both container
+builds. The protected preview returned the real-data catalog and correctly kept
+external feeds disabled. Schema 2 was applied to audit, preview and production;
+runtime cache permissions and unchanged research immutability were read back.
+A live Bank of Canada adapter check returned four valid published series. The
+preview catalog review also caught and corrected a leftover minute-specific
+description in the twelve-bar baseline strategy.
+
 ## Primary references checked
 
 - [Tiingo pricing and individual-use restriction](https://www.tiingo.com/pricing)

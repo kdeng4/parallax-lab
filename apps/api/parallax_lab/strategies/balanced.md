@@ -1,6 +1,7 @@
 # Balanced momentum
 
-A moderate position limit and twelve-minute observation window. The shared
+A moderate position limit and twelve-bar observation window. A bar is one daily
+session for real-data replays, or one minute in local test fixtures. The shared
 parameters apply to every selected baseline model; the model determines how
 to interpret observed returns or deviations. Signals execute at the next open.
 

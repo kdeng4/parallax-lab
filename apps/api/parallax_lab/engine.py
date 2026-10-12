@@ -1,5 +1,6 @@
 """Deterministic long-only replay with next-open execution and auditable accounts."""
 
+import asyncio
 import math
 import statistics
 import sys
@@ -10,6 +11,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from . import ENGINE_VERSION
 from .market import Candle, MarketDataset, close_time, data_hash, generate_candles
+from .model_catalog import MODELS, OPENAI_MODELS
 from .schemas import ExperimentInput
 from .strategy import Strategy, load_strategies
 
@@ -18,13 +20,6 @@ SLIPPAGE_BPS = 2.0
 MINUTES_PER_YEAR = 252 * 390
 D = Decimal
 PRECISION = D("0.000001")
-
-MODELS = {
-    "momentum": {"id": "momentum", "name": "Momentum", "provider": "Local baseline", "description": "Follows observed price momentum over the strategy window."},
-    "mean-reversion": {"id": "mean-reversion", "name": "Mean reversion", "provider": "Local baseline", "description": "Buys observed weakness relative to the trailing mean."},
-    "buy-and-hold": {"id": "buy-and-hold", "name": "Buy & hold", "provider": "Local baseline", "description": "Maintains the strategy allocation as a passive control."},
-}
-
 
 def number(value: Decimal | float, digits: int = 6) -> float:
     return round(float(value), digits)
@@ -144,14 +139,30 @@ def metrics(curve: list[dict], trades: list[dict], initial_cash: float, periods_
 
 
 def run_experiment(request: ExperimentInput, experiment_id: str | None = None, *, dataset: MarketDataset | None = None) -> dict:
+    """Local replay entry point; never substitutes a baseline for a cloud model."""
+    return asyncio.run(replay_experiment(request, experiment_id, dataset=dataset))
+
+
+async def replay_experiment(request: ExperimentInput, experiment_id: str | None = None, *, dataset: MarketDataset | None = None, cloud_decider=None) -> dict:
     experiment_id = experiment_id or str(uuid4())
     strategies = load_strategies()
+    cloud_models = set(request.model_ids) & OPENAI_MODELS.keys()
+    if cloud_models and cloud_decider is None:
+        raise ValueError("Cloud participants require an explicitly configured decision provider")
     # The HTTP layer permits this deterministic fixture only in explicit local test mode.
     dataset = dataset or MarketDataset(generate_candles(request.symbol, request.seed, request.bars), "synthetic", "1m",
                                        {"generator": "parallax-lab-v1"})
     candles, interval = dataset.candles, dataset.interval
     if len(candles) != request.bars:
         raise ValueError("Dataset length must match the requested replay")
+    decision_indices = None
+    if cloud_models:
+        first = max(strategies[key].config.lookback for key in request.strategy_ids)
+        last = len(candles) - 2
+        if first > last:
+            raise ValueError("Replay needs an observation window and a following execution bar")
+        count = request.decision_checkpoints
+        decision_indices = {first + (last - first) * checkpoint // max(1, count - 1) for checkpoint in range(count)}
     periods_per_year = 252 if interval == "1d" else MINUTES_PER_YEAR
     events: list[dict] = []
 
@@ -192,15 +203,19 @@ def run_experiment(request: ExperimentInput, experiment_id: str | None = None, *
         for state in states:
             equity = state.account.equity(candle.close)
             allocation = float(state.account.quantity * D(str(candle.close)) / equity)
-            target, summary, observable = decide(state.model_id, state.strategy, candles[:index + 1], allocation, interval)
-            decision_id = emit(close_time(candle, interval), "decision", state, summary,
-                               {"target_allocation": target, "current_allocation": allocation, "observable_inputs": observable,
-                                "model_id": state.model_id, "strategy_version": state.strategy.version, "bar_index": index})
-            if abs(target - allocation) >= state.strategy.config.rebalance_threshold:
-                order_details = {"target_allocation": target, "decision_id": decision_id, "bar_index": index,
-                                 "execution_rule": "next_bar_open", "max_allocation": state.strategy.config.max_allocation}
-                order_id = emit(close_time(candle, interval), "order", state, f"Queue paper allocation target of {target * 100:.0f}% for the next open.", order_details)
-                state.pending = {**order_details, "order_id": order_id}
+            if decision_indices is None or index in decision_indices:
+                if state.model_id in cloud_models:
+                    target, summary, observable = await cloud_decider(state, candles[:index + 1], interval)
+                else:
+                    target, summary, observable = decide(state.model_id, state.strategy, candles[:index + 1], allocation, interval)
+                decision_id = emit(close_time(candle, interval), "decision", state, summary,
+                                   {"target_allocation": target, "current_allocation": allocation, "observable_inputs": observable,
+                                    "model_id": state.model_id, "strategy_version": state.strategy.version, "bar_index": index})
+                if abs(target - allocation) >= state.strategy.config.rebalance_threshold:
+                    order_details = {"target_allocation": target, "decision_id": decision_id, "bar_index": index,
+                                     "execution_rule": "next_bar_open", "max_allocation": state.strategy.config.max_allocation}
+                    order_id = emit(close_time(candle, interval), "order", state, f"Queue paper allocation target of {target * 100:.0f}% for the next open.", order_details)
+                    state.pending = {**order_details, "order_id": order_id}
             state.curve.append({"timestamp": close_time(candle, interval), "equity": number(equity)})
 
     runs = []
@@ -232,6 +247,9 @@ def run_experiment(request: ExperimentInput, experiment_id: str | None = None, *
                          "strategies": [strategies[s].model_dump() for s in request.strategy_ids],
                          "models": [{**MODELS[m], "implementation_version": ENGINE_VERSION} for m in request.model_ids],
                          "execution": {"signal": "bar_close", "fill": "next_bar_open", "position_mode": "long_only", "leverage": 1,
+                                       "decision_bar_indices": sorted(decision_indices) if decision_indices is not None else list(range(len(candles))),
+                                       "decision_schedule": "matched_checkpoints" if cloud_models else "every_bar",
+                                       **({"research_limitation": "Pretrained models may know later historical events; this replay is not a prospective test."} if cloud_models else {}),
                                        "fee_bps": FEE_BPS, "slippage_bps": SLIPPAGE_BPS, "fractional_share_precision": 6,
                                        "final_position": "marked_to_last_close_not_liquidated"},
                          "metrics": {"periods_per_year": periods_per_year,

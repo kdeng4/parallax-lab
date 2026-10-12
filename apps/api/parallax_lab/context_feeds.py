@@ -106,6 +106,8 @@ class ContextFeeds:
         from datetime import UTC, datetime
         today = datetime.fromtimestamp(self.market.clock(), UTC).date()
         sources = []
+        watched = self.market.watchlist.get()['symbols']
+        watch_key = hashlib.sha256(','.join(sorted(watched)).encode()).hexdigest()[:16]
 
         def add(key, provider, label, fetch, parse, *, credential=True, limits=((3600, 2), (86400, 8)), ttl=21600):
             if not credential:
@@ -118,16 +120,18 @@ class ContextFeeds:
                             'fetched_at': stamp(entry.get('fetched_at', 0)),
                             'next_refresh_at': stamp(max(entry.get('expires_at', 0), entry.get('retry_at', 0))), 'items': data or []})
 
-        add('tiingo:news', 'tiingo', 'Tiingo News', lambda: self.market.fetch_json(
-            'https://api.tiingo.com/tiingo/news', params={'limit': 20}, headers={'Authorization': f'Token {self.market.token}'}),
+        add(f'tiingo:news:{watch_key}', 'tiingo', 'Tiingo News', lambda: self.market.fetch_json(
+            'https://api.tiingo.com/tiingo/news', params={'limit': 20, 'tickers': ','.join(watched)}, headers={'Authorization': f'Token {self.market.token}'}),
             lambda payload, day: news(payload, 'Tiingo', day), credential=bool(self.market.token),
             limits=((60, 5), (3600, 10), (86400, 30)))
         marketaux_key = os.getenv('MARKETAUX_API_KEY', '').strip()
-        add('marketaux:news', 'marketaux', 'Marketaux', lambda: self.market.fetch_json(
-            'https://api.marketaux.com/v1/news/all', params={'api_token': marketaux_key, 'limit': 3, 'language': 'en', 'group_similar': 'true'}),
+        add(f'marketaux:news:{watch_key}', 'marketaux', 'Marketaux', lambda: self.market.fetch_json(
+            'https://api.marketaux.com/v1/news/all', params={'api_token': marketaux_key, 'limit': 3, 'symbols': ','.join(watched), 'language': 'en', 'group_similar': 'true'}),
             lambda payload, day: news(payload, 'Marketaux', day), credential=bool(marketaux_key), limits=((3600, 4), (86400, 24)), ttl=3600)
         alpha_key = os.getenv('ALPHA_VANTAGE_API_KEY', '').strip()
         for symbol in COMPANIES:
+            if symbol not in watched:
+                continue
             add(f'alphavantage:{symbol}', 'alphavantage', f'Earnings · {symbol}', lambda symbol=symbol: self.market.fetch_json(
                 'https://www.alphavantage.co/query', params={'function': 'EARNINGS_CALENDAR', 'symbol': symbol,
                     'horizon': '3month', 'apikey': alpha_key}, csv_response=True),
@@ -139,9 +143,11 @@ class ContextFeeds:
                 'order_by': 'release_date', 'sort_order': 'asc'}), releases, credential=bool(fred_key))
         user_agent = os.getenv('PARALLAX_SEC_USER_AGENT', '').strip()
         for symbol, cik in COMPANIES.items():
+            if symbol not in watched:
+                continue
             add(f'sec:{symbol}', 'sec', f'SEC · {symbol}', lambda cik=cik: self.market.fetch_json(
                 f'https://data.sec.gov/submissions/CIK{cik}.json', params={}, headers={'User-Agent': user_agent}),
                 lambda payload, day, symbol=symbol, cik=cik: filings(payload, symbol, cik, day),
                 credential=bool(user_agent), limits=((60, 3), (3600, 6), (86400, 12)), ttl=86400)
         return {'as_of': stamp(int(self.market.clock())), 'sources': sources,
-                'usage': 'Private research context. Current baseline replays do not consume these feeds.'}
+                'usage': 'Private research context. Historical replays use observable price prefixes, not current news. SEC and earnings coverage currently requires a known company mapping.'}

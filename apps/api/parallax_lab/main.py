@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import secrets
@@ -11,11 +12,14 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .engine import MODELS, run_experiment
+from .cloud_replay import CloudReplay, ProviderBudgetError
+from .engine import run_experiment
 from .market_feeds import FeedError, MarketService, MAX_REPLAY_BARS
 from .context_feeds import ContextFeeds
 from .public_dashboard import attach_benchmark, public_dashboard
-from .schemas import SYMBOLS, ExperimentInput
+from .model_catalog import MAX_CLOUD_CALLS, OPENAI_LIMITS, OPENAI_MODELS, available_models, available_openai_models
+from .providers import ProviderConfigurationError, ProviderError
+from .schemas import SYMBOLS, ExperimentInput, WatchlistInput
 from .storage import Store, open_store
 from .strategy import load_strategies
 
@@ -62,7 +66,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="Parallax Lab · paper-trading research", version="0.1.0", lifespan=lifespan,
-                  description="Private research API. Real daily market snapshots and local baselines; no live orders.")
+                  description="Private research API. Real daily market snapshots, local controls and bounded OpenAI decisions; no live orders.")
 
     @app.middleware("http")
     async def protect_api(request: Request, call_next):
@@ -101,9 +105,11 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     @app.get("/api/v1/catalog")
     def catalog():
-        return {"models": list(MODELS.values()),
+        return {"models": available_models(),
+                "openai": {"configured": bool(available_openai_models()), "max_calls_per_experiment": MAX_CLOUD_CALLS,
+                           "max_calls_per_minute": OPENAI_LIMITS[0][1], "max_calls_per_day": OPENAI_LIMITS[1][1]},
                 "strategies": [s.model_dump(exclude={"config"}) for s in load_strategies().values()],
-                "symbols": list(SYMBOLS), "data_source": "synthetic" if fixture_mode else "tiingo",
+                "symbols": app.state.market.watchlist.get()["symbols"], "data_source": "synthetic" if fixture_mode else "tiingo",
                 "interval": "1m" if fixture_mode else "1d", "max_bars": 1440 if fixture_mode else MAX_REPLAY_BARS,
                 "replay_available": fixture_mode or bool(app.state.market.network and app.state.market.token and app.state.market.persistent_tiingo),
                 "replay_requirement": None if fixture_mode or app.state.market.persistent_tiingo else 'A market-data licence permitting persistent research is required.'}
@@ -120,12 +126,30 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def market_overview():
         return app.state.market.overview()
 
+    @app.get("/api/v1/market/watchlist")
+    def watchlist():
+        return app.state.market.watchlist.get()
+
+    @app.post("/api/v1/market/watchlist")
+    def update_watchlist(request: WatchlistInput):
+        return app.state.market.watchlist.replace(request)
+
     @app.get("/api/v1/experiments")
     def list_experiments():
         return {"experiments": store().list_experiments()}
 
     @app.post("/api/v1/experiments", status_code=201)
     def create_experiment(request: ExperimentInput):
+        if fixture_mode and request.symbol not in SYMBOLS:
+            raise HTTPException(422, "Synthetic fixtures support only their predefined test symbols; use verified market history for other tickers.")
+        cloud = None
+        if any(model in OPENAI_MODELS for model in request.model_ids):
+            try:
+                cloud = CloudReplay(request, store(), client=getattr(app.state, "openai_client", None))
+            except ProviderConfigurationError as error:
+                raise HTTPException(503, str(error)) from None
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
         try:
             dataset = None if fixture_mode else app.state.market.replay(request.symbol, request.bars)
         except ValueError as error:
@@ -134,7 +158,12 @@ def create_app(database_url: str | None = None) -> FastAPI:
             if error.code == 'storage_license_required':
                 raise HTTPException(503, "Persistent experiments require a market-data licence permitting storage. No experiment was created.") from None
             raise HTTPException(503, "Verified daily market history is unavailable. Connect Tiingo or wait for the next refresh; no synthetic fallback is used.") from None
-        detail = run_experiment(request, dataset=dataset)
+        try:
+            detail = asyncio.run(cloud.run(dataset=dataset)) if cloud else run_experiment(request, dataset=dataset)
+        except ProviderBudgetError as error:
+            raise HTTPException(429, str(error)) from None
+        except ProviderError as error:
+            raise HTTPException(503, f"{error} No experiment was saved; already attempted calls can still be billed.") from None
         if dataset is not None:
             try:
                 benchmark = app.state.market.replay('SPY', request.bars)

@@ -12,7 +12,8 @@ import httpx
 
 from .market import Candle, MarketDataset
 from .market_cache import MarketCache
-from .schemas import SYMBOLS
+from .schemas import normalize_ticker
+from .watchlist import Watchlist
 
 BOC_SERIES = {
     "FXUSDCAD": ("USD / CAD", "CAD per USD", "daily", 7),
@@ -152,6 +153,7 @@ def parse_boc(payload, today: date) -> list[dict]:
 class MarketService:
     def __init__(self, store, *, network=None, token=None, clock=time.time, client_factory=None, persistent_tiingo=None):
         self.cache = MarketCache(store)
+        self.watchlist = Watchlist(store)
         self.network = (os.getenv("PARALLAX_MARKET_NETWORK", "1" if os.getenv("VERCEL_ENV") == "production" else "0") == "1"
                         if network is None else network)
         self.token = os.getenv("TIINGO_API_KEY", "").strip() if token is None else token
@@ -167,6 +169,8 @@ class MarketService:
                 raise FeedError("rate_limited", retry_seconds(response.headers.get("Retry-After", ""), int(self.clock())))
             if response.status_code in (401, 403):
                 raise FeedError("authentication_failed", 21_600)
+            if response.status_code == 404:
+                raise FeedError("not_found")
             if response.status_code != 200:
                 raise FeedError("provider_unavailable")
             parts, size = [], 0
@@ -199,12 +203,12 @@ class MarketService:
                 entry = self.cache.finish(key, provider, lease, int(self.clock()),
                                           error=error.code if isinstance(error, FeedError) else "invalid_or_unavailable_data",
                                           retry_after=error.retry_after if isinstance(error, FeedError) else 0,
-                                          persistent=persistent)
+                                          persistent=persistent,
+                                          provider_backoff=not (isinstance(error, FeedError) and error.code == "not_found"))
         return entry
 
     def stock(self, symbol):
-        if symbol not in SYMBOLS:
-            raise ValueError("Unknown symbol")
+        symbol = normalize_ticker(symbol)
         today = datetime.fromtimestamp(self.clock(), UTC).date()
         entry = self.load(f"tiingo:{symbol}", "tiingo", lambda: self.fetch_json(
             f"{TIINGO_URL}/{symbol}/prices",
@@ -230,7 +234,7 @@ class MarketService:
                   "source": "Bank of Canada", "source_url": "https://www.bankofcanada.ca/rates/",
                   "fetched_at": stamp(entry.get("fetched_at", 0)),
                   "next_refresh_at": stamp(max(entry.get("expires_at", 0), entry.get("retry_at", 0)))} for item in macro]
-        stocks = [self.stock(symbol) for symbol in SYMBOLS]
+        stocks = [self.stock(symbol) for symbol in self.watchlist.get()["symbols"]]
         for stock in stocks:
             if stock["data"]:
                 stock["data"] = {k: v for k, v in stock["data"].items() if k != "candles"}

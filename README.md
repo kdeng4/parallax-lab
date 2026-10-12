@@ -7,7 +7,7 @@ domain follows the latest production deployment.
 
 Parallax Lab runs independent trading algorithms against the same immutable market
 snapshot, records every decision and fill, and makes results comparable in one
-minimal interface: **real published market data, local baseline algorithms,
+minimal interface: **real published market data, local controls and opt-in OpenAI models,
 simulated funds.** Bank of Canada currency/rate indicators are keyless. Tiingo
 daily stock history requires a free personal API token; missing data stays empty.
 See the [market-data audit and setup](docs/market-data-audit-2026-10-12.md).
@@ -41,15 +41,19 @@ news or run continuously. Missing credentials produce explicit connection states
 - Daily stock indicators (SMA, RSI, MACD) and attributed currency/rate data.
 - Persistent cross-worker request budgets and provider cooldowns in Neon.
 - Momentum, mean-reversion and buy-and-hold reference algorithms.
+- Owner-only GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra selection for bounded paper replays.
+- Editable private stock/ETF watchlists, including tickers beyond the initial five.
 - Versioned Markdown strategy configurations.
 - Independent paper accounts, next-bar fills, fees, slippage and long-only limits.
 - Equity curves, returns, drawdown, Sharpe and realized sell-fill win rates.
 - Persistent experiment history, sequenced audit trails, filtering and JSON export.
 - A responsive Next.js UI and a validated FastAPI HTTP API.
 
-No live broker orders are implemented. Intraday streaming, cloud-model experiment
-execution, multi-user accounts, NATS workers, MLflow and Kubernetes are later
-milestones. Replay participants remain local algorithms, never labelled as cloud models.
+No live broker orders are implemented. OpenAI replays make real Responses API calls
+at matched decision checkpoints and preserve validated summaries, response model IDs
+and token usage. They require market-data storage rights. Pretrained models may know
+later events; historical results are not prospective tests. Intraday streaming,
+multi-user accounts, continuous agent execution and distributed workers remain later milestones.
 
 ## Develop
 

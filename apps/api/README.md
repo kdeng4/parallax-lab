@@ -26,7 +26,7 @@ explicitly in a guarded temporary SQLite directory.
 ## Data and execution
 
 Real replays use completed daily Tiingo sessions, identical frozen snapshots,
-and local momentum, mean-reversion or buy-and-hold algorithms. Source timestamps,
+and local controls or configured OpenAI models. Source timestamps,
 hashes, strategy Markdown versions and execution assumptions are exported.
 Synthetic minute data is an explicit local test mode and is ignored on Vercel.
 Missing real history never falls back to synthetic observations.
@@ -49,11 +49,22 @@ See [deployment](../../docs/deployment.md) for provider configuration and limits
 
 ## Provider adapters
 
-OpenAI and Anthropic decision adapters are retained for the next integration.
-The experiment API does not call them yet. Model allowlists, validated outputs,
-sanitized error messages and identity-only authentication are required before
-activation. Provider keys never belong in request payloads, exports or browser
-bundles. No broker orders are implemented.
+The owner-only experiment API calls configured OpenAI models through Responses API
+Structured Outputs. At most six billable requests are allowed per experiment,
+six per minute and 24 per rolling day across workers; errors count too. Cloud
+experiments use one to three matched decision checkpoints for every participant,
+with a 15-second call limit and 60-second inference deadline. No automatic retries
+or partial experiment saves occur. Anthropic adapters remain separate and unexposed
+in the experiment catalogue. Provider keys never belong in request payloads, exports or browser
+bundles. Store OPENAI_API_KEY as a Vercel Production Secret. PARALLAX_OPENAI_MODELS
+allowlists the supported provider IDs; PARALLAX_OPENAI_NETWORK=0 disables cloud
+inference. A root .env.local is only a local credential destination and is never
+required for the deployed UI. No broker orders are implemented.
+
+GET/POST /api/v1/market/watchlist persist only owner-selected ticker strings in
+Neon. Prices and indicators use that list on the next manual data request. Tickers
+are validated and normalized (BRK.B becomes BRK-B), with at most ten selections.
+Changing preferences performs no provider request and does not reset quotas.
 
 ## Validation
 

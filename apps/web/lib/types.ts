@@ -23,6 +23,7 @@ export interface Catalog {
   max_bars: number;
   replay_available: boolean;
   replay_requirement?: string | null;
+  openai?: { configured: boolean; max_calls_per_experiment: number; max_calls_per_minute: number; max_calls_per_day: number };
 }
 export interface Experiment {
   id: string;
@@ -80,7 +81,7 @@ export interface AuditEvent {
   details: Record<string, unknown>;
 }
 export interface Detail extends Experiment {
-  metadata?: { dataset: { fetched_at?: string; as_of?: string; limitations?: string }; metrics: { periods_per_year: number; sharpe: string } };
+  metadata?: { dataset: { fetched_at?: string; as_of?: string; limitations?: string }; metrics: { periods_per_year: number; sharpe: string }; execution?: { decision_bar_indices: number[]; research_limitation?: string }; openai?: { calls_attempted: number } };
   strategy_name: string;
   data_hash: string;
   costs: { fee_bps: number; slippage_bps: number };
@@ -97,6 +98,7 @@ export interface CreateExperiment {
   seed?: number;
   initial_cash: number;
   bars: number;
+  decision_checkpoints?: number;
 }
 
 export interface MarketOverview {

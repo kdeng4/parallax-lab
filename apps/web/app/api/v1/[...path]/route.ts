@@ -16,10 +16,10 @@ function fail(detail: string, status: number) {
 async function proxy(request: Request, context: Context) {
   const { path } = await context.params;
   const route = path.join('/');
-  if (!/^(health|catalog|(?:market|context)\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
+  if (!/^(health|catalog|market\/(?:overview|watchlist)|context\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
     return fail('Not found', 404);
   }
-  if (request.method === 'POST' && route !== 'experiments') return fail('Method not allowed', 405);
+  if (request.method === 'POST' && !['experiments', 'market/watchlist'].includes(route)) return fail('Method not allowed', 405);
 
   const hosted = process.env.VERCEL === '1';
   const token = process.env.PARALLAX_API_TOKEN;
@@ -48,7 +48,7 @@ async function proxy(request: Request, context: Context) {
     if (!access.canEdit) {
       return fail(access.reason === 'not_configured'
         ? 'Editor authentication is not configured. This workspace is read only.'
-        : 'Only approved editors can create experiments.', access.reason === 'not_configured' ? 503 : 403);
+        : 'Only approved editors can change workspace settings or create experiments.', access.reason === 'not_configured' ? 503 : 403);
     }
     const parts: Uint8Array[] = [];
     let size = 0;

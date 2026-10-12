@@ -150,15 +150,17 @@ def parse_boc(payload, today: date) -> list[dict]:
 
 
 class MarketService:
-    def __init__(self, store, *, network=None, token=None, clock=time.time, client_factory=None):
+    def __init__(self, store, *, network=None, token=None, clock=time.time, client_factory=None, persistent_tiingo=None):
         self.cache = MarketCache(store)
         self.network = (os.getenv("PARALLAX_MARKET_NETWORK", "1" if os.getenv("VERCEL_ENV") == "production" else "0") == "1"
                         if network is None else network)
         self.token = os.getenv("TIINGO_API_KEY", "").strip() if token is None else token
+        self.persistent_tiingo = (os.getenv('PARALLAX_TIINGO_STORAGE_APPROVED') == '1'
+                                 if persistent_tiingo is None else persistent_tiingo)
         self.clock = clock
         self.client_factory = client_factory or (lambda: httpx.Client(timeout=5, follow_redirects=False))
 
-    def fetch_json(self, url, *, params, headers=None):
+    def fetch_json(self, url, *, params, headers=None, csv_response=False):
         deadline = time.monotonic() + 10
         with self.client_factory() as client, client.stream("GET", url, params=params, headers=headers) as response:
             if response.status_code == 429:
@@ -173,24 +175,31 @@ class MarketService:
                 if size > MAX_RESPONSE_BYTES or time.monotonic() > deadline:
                     raise FeedError("invalid_response")
                 parts.append(part)
-            return json.loads(b"".join(parts))
+            content = b"".join(parts)
+            return content.decode('utf-8-sig') if csv_response else json.loads(content)
 
-    def load(self, key, provider, fetch, parse):
+    def load(self, key, provider, fetch, parse, *, limits=None, ttl=TTL, persistent=None):
         now = int(self.clock())
         if not self.network:
             return {"error": "offline"}
         if provider == "tiingo" and not self.token:
             return {"error": "key_missing"}
-        limits = ((60, 5), (3600, 10), (86_400, 20)) if provider == "tiingo" else ((3600, 1), (86_400, 4))
-        entry, lease = self.cache.claim(key, provider, now, limits)
+        limits = limits or (((60, 5), (3600, 10), (86_400, 30)) if provider == "tiingo" else ((3600, 1), (86_400, 4)))
+        persistent = (provider != 'tiingo' or self.persistent_tiingo) if persistent is None else persistent
+        entry, lease = self.cache.claim(key, provider, now, limits, persistent=persistent)
         if lease:
             try:
                 data = parse(fetch(), datetime.fromtimestamp(now, UTC).date())
-                entry = self.cache.finish(key, provider, lease, int(self.clock()), data=data, ttl=TTL)
-            except (FeedError, httpx.HTTPError, ValueError, TypeError, KeyError, OverflowError) as error:
+                entry = self.cache.finish(key, provider, lease, int(self.clock()), data=data,
+                                          ttl=ttl if persistent else 0, persistent=persistent)
+                if not persistent:
+                    # Content lives only in this request, never in Neon or a process cache.
+                    entry['expires_at'] = int(self.clock()) + 60
+            except (FeedError, httpx.HTTPError, ValueError, TypeError, KeyError, IndexError, AttributeError, OverflowError) as error:
                 entry = self.cache.finish(key, provider, lease, int(self.clock()),
                                           error=error.code if isinstance(error, FeedError) else "invalid_or_unavailable_data",
-                                          retry_after=error.retry_after if isinstance(error, FeedError) else 0)
+                                          retry_after=error.retry_after if isinstance(error, FeedError) else 0,
+                                          persistent=persistent)
         return entry
 
     def stock(self, symbol):
@@ -228,11 +237,13 @@ class MarketService:
         return {"as_of": stamp(int(self.clock())), "stocks": stocks, "macro": macro,
                 "refresh_interval_seconds": TTL, "price_frequency": "Completed daily sessions; not intraday quotes",
                 "indicator_basis": "Split- and dividend-adjusted closes. MACD 12/26/9; Wilder RSI 14; SMA 20/50.",
-                "replay_ready": any(s["status"] == "ok" for s in stocks)}
+                "replay_ready": self.persistent_tiingo and any(s["status"] == "ok" for s in stocks)}
 
     def replay(self, symbol: str, bars: int):
         if bars > MAX_REPLAY_BARS:
             raise ValueError(f"Daily replays support at most {MAX_REPLAY_BARS} sessions")
+        if not self.persistent_tiingo:
+            raise FeedError('storage_license_required')
         result = self.stock(symbol)
         if result["status"] != "ok":
             raise FeedError(result["status"])

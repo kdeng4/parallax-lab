@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 async function openWorkbench(page: Page) {
-  await page.goto('/');
+  await page.goto('/workspace');
   await expect(page.getByRole('button', { name: /new experiment/i }).first()).toBeVisible();
   await expect(page.getByTestId('equity-chart')).toBeVisible();
 }
@@ -59,7 +59,7 @@ for (const comparison of ['models', 'strategies'] as const) {
 }
 
 test('optional experiment name works and dialog supports keyboard dismissal', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/workspace');
   await page.getByRole('button', { name: /new experiment/i }).first().click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -101,7 +101,7 @@ test('invalid participant selection stays local and can be corrected', async ({ 
 });
 
 test('chart controls, account inspection, audit filtering and export use persisted data', async ({ page, request }) => {
-  await page.goto('/');
+  await page.goto('/workspace');
   await expect(page.getByTestId('equity-chart')).toBeVisible();
   const id = await page.getByLabel('Selected experiment').inputValue();
   const detail = await (await request.get(`/api/v1/experiments/${id}`)).json();
@@ -185,7 +185,7 @@ test('switching audit experiments clears filters and displays the selected recor
 
 test('mobile layout stays within viewport and can create an experiment', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/workspace');
   const create = page.getByRole('button', { name: /new experiment/i }).first();
   await expect(create).toBeVisible();
   await expect(page.getByTestId('equity-chart')).toBeVisible();
@@ -199,7 +199,7 @@ test('mobile layout stays within viewport and can create an experiment', async (
 
 test('connection failure is actionable and retry restores the workspace', async ({ page }) => {
   await page.route('**/api/v1/catalog', (route) => route.abort());
-  await page.goto('/');
+  await page.goto('/workspace');
   await expect(page.getByRole('alert').filter({ hasText: 'research data' })).toContainText('load the research data');
   await page.unroute('**/api/v1/catalog');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
@@ -210,7 +210,7 @@ test('connection failure is actionable and retry restores the workspace', async 
 test('failed experiment selection never presents previous results as the new experiment', async ({ page, request }) => {
   const first = await (await request.post('/api/v1/experiments', { data: { name: 'Selection target', bars: 60 } })).json();
   const current = await (await request.post('/api/v1/experiments', { data: { name: 'Current selection', bars: 60 } })).json();
-  await page.goto('/');
+  await page.goto('/workspace');
   await expect(page.getByLabel('Selected experiment')).toHaveValue(current.id);
   await expect(page.getByTestId('equity-chart')).toBeVisible();
   await page.route(`**/api/v1/experiments/${first.id}`, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Temporary detail failure' }) }));
@@ -222,7 +222,7 @@ test('failed experiment selection never presents previous results as the new exp
 
 test('view-only identity sees no enabled experiment creation controls', async ({ page }) => {
   await page.route('**/api/session', route => route.fulfill({ json: { canEdit: false, email: null, reason: 'sign_in' } }));
-  await page.goto('/');
+  await page.goto('/workspace');
   await expect(page.getByText('Read only. Creating experiments requires an approved editor sign-in.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'New experiment', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Start an experiment', exact: true })).toBeDisabled();

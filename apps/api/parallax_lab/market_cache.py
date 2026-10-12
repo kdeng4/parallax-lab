@@ -30,9 +30,18 @@ class MarketCache:
             (key, json.dumps(value, allow_nan=False, separators=(",", ":"))),
         )
 
-    def claim(self, key: str, provider: str, now: int, limits: tuple[tuple[int, int], ...]):
+    def discard_tiingo_content(self):
+        """Invalidate obsolete content caches, retaining request-budget metadata."""
+        with self.locked() as connection:
+            rows = connection.execute("SELECT key FROM market_state WHERE key LIKE 'cache:tiingo:%'").fetchall()
+            for row in rows:
+                self.write(connection, row['key'], {})
+
+    def claim(self, key: str, provider: str, now: int, limits: tuple[tuple[int, int], ...], *, persistent=True):
         with self.locked() as connection:
             entry = self.read(connection, f"cache:{key}")
+            if not persistent:
+                entry = {k: v for k, v in entry.items() if k != 'data'}
             if entry.get("expires_at", 0) > now or entry.get("lease_until", 0) > now:
                 return entry, None
             state = self.read(connection, f"provider:{provider}")
@@ -50,7 +59,7 @@ class MarketCache:
             return entry, token
 
     def finish(self, key: str, provider: str, token: str, now: int, *, data=None, ttl=21_600,
-               error: str | None = None, retry_after: int = 0):
+               error: str | None = None, retry_after: int = 0, persistent=True):
         with self.locked() as connection:
             entry = self.read(connection, f"cache:{key}")
             if entry.get("lease") != token:
@@ -69,5 +78,5 @@ class MarketCache:
                 entry = {"data": data, "fetched_at": now, "expires_at": now + ttl}
             entry.pop("lease", None)
             entry.pop("lease_until", None)
-            self.write(connection, f"cache:{key}", entry)
+            self.write(connection, f"cache:{key}", entry if persistent else {k: v for k, v in entry.items() if k != 'data'})
             return entry

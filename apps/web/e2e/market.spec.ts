@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('missing market credentials show empty values, never made-up prices', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/workspace');
   const market = page.getByTestId('market-overview');
   await expect(market.getByRole('heading', { name: 'US market watchlist' })).toBeVisible();
   await expect(market.getByText('Feed disabled', { exact: true })).toHaveCount(9);
@@ -21,7 +21,7 @@ test('published values retain source dates, stale labels and mobile containment'
       data: { as_of: '2026-10-09', close: 500.25, adjusted_close: 500.25, change_pct: -.5, volume: 100000,
         indicators: { sma20: 502, sma50: 499, rsi14: 42, macd: null, macd_signal: null } } }],
   } }));
-  await page.goto('/');
+  await page.goto('/workspace');
   const market = page.getByTestId('market-overview');
   await expect(market.getByText('1.4271', { exact: true })).toBeVisible();
   await expect(market.getByRole('cell', { name: /US\$500.25/ })).toBeVisible();

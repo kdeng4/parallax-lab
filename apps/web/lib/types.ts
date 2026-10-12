@@ -22,6 +22,7 @@ export interface Catalog {
   interval: string;
   max_bars: number;
   replay_available: boolean;
+  replay_requirement?: string | null;
 }
 export interface Experiment {
   id: string;

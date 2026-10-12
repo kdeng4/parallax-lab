@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .engine import MODELS, run_experiment
 from .market_feeds import FeedError, MarketService, MAX_REPLAY_BARS
+from .context_feeds import ContextFeeds
+from .public_dashboard import attach_benchmark, public_dashboard
 from .schemas import SYMBOLS, ExperimentInput
 from .storage import Store, open_store
 from .strategy import load_strategies
@@ -57,6 +59,9 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         store.initialize()
         app.state.store = store
         app.state.market = MarketService(store)
+        if not app.state.market.persistent_tiingo:
+            app.state.market.cache.discard_tiingo_content()
+        app.state.context = ContextFeeds(app.state.market)
         seed_setting = os.getenv("PARALLAX_SEED_DEMO")
         if seed_setting is None:
             seed_setting = os.getenv("PATRICK_SEED_DEMO", "0")
@@ -116,7 +121,16 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
                 "strategies": [s.model_dump(exclude={"config"}) for s in load_strategies().values()],
                 "symbols": list(SYMBOLS), "data_source": "synthetic" if fixture_mode else "tiingo",
                 "interval": "1m" if fixture_mode else "1d", "max_bars": 1440 if fixture_mode else MAX_REPLAY_BARS,
-                "replay_available": fixture_mode or bool(app.state.market.network and app.state.market.token)}
+                "replay_available": fixture_mode or bool(app.state.market.network and app.state.market.token and app.state.market.persistent_tiingo),
+                "replay_requirement": None if fixture_mode or app.state.market.persistent_tiingo else 'A market-data licence permitting persistent research is required.'}
+
+    @app.get('/api/v1/public/dashboard')
+    def public_summary():
+        return public_dashboard(store())
+
+    @app.get('/api/v1/context/overview')
+    def private_context():
+        return app.state.context.overview()
 
     @app.get("/api/v1/market/overview")
     def market_overview():
@@ -132,9 +146,18 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
             dataset = None if fixture_mode else app.state.market.replay(request.symbol, request.bars)
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
-        except FeedError:
+        except FeedError as error:
+            if error.code == 'storage_license_required':
+                raise HTTPException(503, "Persistent experiments require a market-data licence permitting storage. No experiment was created.") from None
             raise HTTPException(503, "Verified daily market history is unavailable. Connect Tiingo or wait for the next refresh; no synthetic fallback is used.") from None
         detail = run_experiment(request, dataset=dataset)
+        if dataset is not None:
+            try:
+                benchmark = app.state.market.replay('SPY', request.bars)
+                attach_benchmark(detail, benchmark)
+            except (FeedError, ValueError):
+                pass  # Never invent a missing benchmark or substitute the traded stock.
+        detail['metadata']['public_performance_approved'] = (dataset is not None and os.getenv('PARALLAX_PUBLIC_PERFORMANCE_APPROVED') == '1')
         store().save(detail)
         return stream_json(detail, status_code=201)
 

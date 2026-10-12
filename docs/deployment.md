@@ -1,178 +1,107 @@
 # Parallax Lab deployment
 
-The hosted application uses one Vercel project with two Services (currently a
-Vercel beta): Next.js in `apps/web` and FastAPI in `apps/api`. Neon provides
-PostgreSQL. Cloudflare manages the custom domain's DNS.
+The repo deploys as two Vercel Services: Next.js in `apps/web` and private FastAPI
+in `apps/api`. Cloudflare remains DNS-only. Neon supplies PostgreSQL and managed
+Google identity. No Cloudflare Access organization or account-wide policy is needed.
 
-## Application boundary
+## Public and private boundary
 
-The repository-root `vercel.json` exposes only the `web` service. The Python
-service has no public route. A binding injects `BACKEND_INTERNAL_URL` into web
-functions at runtime; never set this variable manually. Browser calls to
-`/api/v1/*` go through a Next.js route handler, which attaches a server-only
-bearer token, forwards only supported paths, and streams responses.
+- `/` and `/api/public/dashboard` expose only agent names and an explicitly
+  approved result projection. No settings, cash amounts, quantities, raw prices,
+  news, credentials, private experiment names or full audit messages appear.
+- `/workspace` requires an approved Google identity on the server. Its redirect
+  is only a convenience; **every** `/api/v1/*` read/write also checks authorization.
+- `/auth/sign-in`, `/api/auth/*` and static assets must remain reachable publicly.
+- The private Python service is not routed to the internet. The Next service
+  binding supplies `BACKEND_INTERNAL_URL`; never set it manually. A distinct
+  `PARALLAX_API_TOKEN` per environment authenticates server-to-server requests.
+- Keep Vercel protection on previews and immutable deployment URLs using
+  `prod_deployment_urls_and_all_previews`. Change from `all` only after the new
+  application guards pass verification. Never choose `null` or expose old builds.
 
-**Enable Vercel Authentication for All Deployments before deploying.** This
-must cover production domains, preview URLs, and immutable deployment URLs.
-API service authentication alone does not authenticate a visitor to the frontend.
-Do not disable project protection while this remains a single-user workspace.
+## Google authentication
 
-| Project setting | Value |
-| --- | --- |
-| Git repository | `kdeng4/parallax-lab` |
-| Production branch | `main` |
-| Root directory | repository root |
-| Framework preset | Services |
-| Build and install commands | defined per service in `vercel.json` |
-| Node.js | 24.x |
-| Function region | iad1, close to Neon aws-us-east-1 |
-| Vercel Authentication | All Deployments (`deploymentType: all`) |
+Neon Auth is enabled on production branch `br-delicate-fire-b8xk1lye` in project
+`young-firefly-90966004`, database `parallax`. Its trusted app origin is
+`https://parallax.pdeng.pp.ua`.
 
-## Secrets and environments
+1. Create a Google OAuth **Web application** with basic identity scopes only.
+2. Register this exact authorized redirect URI:
+   `https://ep-dark-feather-b8xljhdp.neonauth.c-14.us-east-1.aws.neon.tech/parallax/auth/callback/google`
+3. In Neon Auth, replace shared development Google credentials with that custom
+   OAuth client ID and secret. Disable unused email/password registration.
+4. Set `NEON_AUTH_BASE_URL` to the branch auth URL, and a sensitive random
+   `NEON_AUTH_COOKIE_SECRET` of at least 32 characters in Vercel Production.
+5. Keep `NEON_AUTH_GOOGLE_READY=0` until custom Google configuration is ready;
+   then set it to `1` and redeploy. The shared development provider is not a
+   verified production configuration.
+6. `PARALLAX_EDITOR_EMAILS` contains only the owner's approved Google email.
+   Optional `PARALLAX_VIEWER_EMAILS` grants private read access, never editing.
+   Both require a verified email, unexpired managed session and linked Google
+   identity. Account registration alone grants no app permissions.
 
-Set encrypted/sensitive project environment variables. Never use `NEXT_PUBLIC_`
-for these values, commit them, or print them in build/test logs.
+The SDK handles OAuth state, session cookies and its callback verifier. The
+Next proxy applies SDK middleware only to `/workspace`, never public assets.
+Session and private API responses use no-store caching. Test owner sign-in,
+reload, sign-out, an unapproved Google identity and direct API requests before
+calling Google activation complete. Production OAuth still requires owner credentials.
 
-| Variable | Purpose |
-| --- | --- |
-| `PARALLAX_DATABASE_URL` | Pooled PostgreSQL URL for a runtime role with SELECT/INSERT privileges only |
-| `PARALLAX_API_TOKEN` | Random bearer token of at least 32 characters, shared by the two services |
-| `PARALLAX_SEED_DEMO` | `0`; hosted deployments never seed, even if set to `1` |
-| `PARALLAX_ACCESS_ISSUER` | Exact HTTPS Cloudflare Access team origin |
-| `PARALLAX_ACCESS_AUDIENCE` | AUD tag of this application |
-| `PARALLAX_EDITOR_EMAILS` | Explicit comma-separated approved editor emails; no automatic grants |
+## Private data integrations
 
-Use different database branches and tokens for production and preview. A hosted
-API fails startup when its PostgreSQL URL or token is missing. Local development
-still supports SQLite and `API_BASE_URL=http://127.0.0.1:8000`; set the same
-`PARALLAX_API_TOKEN` in both processes when testing authenticated local access.
+| Source | Credential | App request budget | Content cache |
+| --- | --- | --- | --- |
+| Tiingo EOD + News | `TIINGO_API_KEY` | Shared 5/min, 10/hour, 30/rolling day | Starter: request memory only |
+| Marketaux news | `MARKETAUX_API_KEY` | 4/hour, 24/rolling day | One hour |
+| Alpha Vantage earnings calendar | `ALPHA_VANTAGE_API_KEY` | Shared 3/hour, 6/rolling day | One day per company |
+| FRED releases | `FRED_API_KEY` | 2/hour, 8/rolling day | Six hours |
+| SEC EDGAR submissions | `PARALLAX_SEC_USER_AGENT` identifying the app and contact | 3/min, 6/hour, 12/rolling day | One day |
+| Bank of Canada | None | 1/hour, 4/rolling day | Six hours |
 
-## Database migration
+All sources share cross-worker leases and durable request counters. Failures
+count, Retry-After is respected, and secrets/provider error bodies are never
+returned. No public request fetches market data. News context loads manually in
+the private workspace. Provider credentials are not available in previews by
+default; `PARALLAX_MARKET_NETWORK=0` prevents preview traffic.
 
-Schema changes live in `apps/api/parallax_lab/migrations`. Test them on an
-isolated branch first. Apply using a **direct** owner connection, before starting
-the app; the runtime role should not own tables or have schema-change rights.
+Context is informational: baseline algorithms do not consume news. Earnings
+cover the current company watchlist (AAPL, MSFT, NVDA); ETF filings are not
+misrepresented as operating-company events. Missing keys and empty calendars
+remain distinct states. No sample stories or invented observations are used.
 
-```bash
-cd apps/api
-# Inject the direct owner connection as PARALLAX_DATABASE_URL_UNPOOLED.
-uv run --frozen python -m parallax_lab.migrate
-```
+## Tiingo storage and publication rights
 
-The migration is transactional, serialized by an advisory lock, and idempotent.
-The API only checks the schema version at startup. Experiments and their events
-commit in one transaction; PostgreSQL triggers reject updates/deletes, and the
-runtime role additionally has no such grants.
+The October 6 terms prohibit Starter/Trial durable storage of source data **and
+its derived results**. The earlier durable stock-cache implementation was
+incorrect for that tier. The app now invalidates legacy Tiingo content caches
+when storage approval is absent, retains only request/lease metadata, and keeps
+successful Starter responses in request memory. They cannot start a persistent
+experiment. Provider backup history is subject to Neon's configured retention.
 
-## DNS and release verification
+`PARALLAX_TIINGO_STORAGE_APPROVED=1` asserts that a suitable active entitlement
+has been verified; it does not obtain permission. Leave it `0` on Starter.
 
-Add the intended subdomain to the Vercel project, use the exact CNAME target
-returned by Vercel, and create a DNS-only CNAME in Cloudflare. Keep existing
-records untouched. Vercel terminates HTTPS and enforces project authentication.
-The proposed editor login uses Cloudflare Access. Access activation is currently
-blocked pending explicit approval; DNS remains unchanged until activation.
-Creating an Access application requires proxying only the Parallax subdomain,
-with Full (strict) TLS to Vercel. Do not change unrelated hostnames.
+`PARALLAX_PUBLIC_PERFORMANCE_APPROVED=1` separately asserts appropriate public
+rights covering **all plotted portfolios and the SPY benchmark**. A single
+security rebased to 100 is explicitly not a licensing workaround. Only new
+experiments created with that approval can enter the public projection; synthetic
+fixtures and previously unapproved records never publish automatically.
 
-Before release, run CI (including real PostgreSQL, frontend proxy tests, browser
-workflows, and container builds). Then verify the protected preview: health,
-creation, reload/persistence, filtered audit events, and the 1440-bar export.
-Check that anonymous access cannot read or create experiments, and that no
-public rewrite exposes the API service. The large export is streamed through
-both FastAPI and Next.js so it does not hit the buffered response-size limit.
+Public curves compare participants from the latest eligible experiment, all
+starting at 100, with matched SPY session dates. SPY uses adjusted buy-and-hold
+returns before costs; agents include trading costs. Missing benchmarks stay
+missing. Unrelated runs are not joined into a fictitious continuous portfolio.
+Activity shows buy/sell and historical session date, not simulated execution
+prices, account quantities, strategy details or purported live trade times.
 
-Once connected, Git integration deploys main to production and other branches to preview.
-Database migrations remain an explicit operator action, not a side effect of
-every frontend build. Verify CI before merging changes; no branch-protection
-policy is assumed to exist.
+## Storage, CI and rollout
 
+Existing schema 2 and runtime role `parallax_app_v2` are reused; no migration is
+needed. Experiments/events remain immutable and runtime permissions unchanged.
+The mutable `market_state` stores provider caches and budgets only.
 
-## Provisioned deployment — 2026-10-12
-
-- Application: https://parallax.pdeng.pp.ua (Vercel sign-in required).
-- Vercel: `patrick-db62/parallax-lab`, project `prj_WfMeBpTlMJ13F7my4nMJVaAHd8aP`.
-- Neon: project `young-firefly-90966004`, PostgreSQL 17 in aws-us-east-1.
-  Production branch: `br-delicate-fire-b8xk1lye`; preview branch:
-  `br-super-wave-b8rx0ons`. Database: `parallax`; application role:
-  `parallax_app_v2`. An isolated `audit-2026-10-12` branch retains migration checks.
-- Cloudflare: DNS-only `parallax.pdeng.pp.ua` CNAME to
-  `e67426bd5849fbc4.vercel-dns-017.com`, TTL 300.
-- Each Vercel environment has its own sensitive database URL and API token.
-  Database-owner credentials are not deployed.
-- `kdeng4/parallax-lab` is now permanently connected in Vercel Git settings,
-  confirmed both in the dashboard and the provider's linked-project API.
-  Production branch: `main`. The initial connector installation error was
-  resolved by connecting the existing GitHub integration through the dashboard.
-- Editor authorization commit `6cafebf6` passed CI run `38285745642`:
-  112 backend tests with 93.38% branch-inclusive coverage, 18 proxy/auth tests,
-  11 browser workflows, and both container builds. The protected preview
-  reports healthy PostgreSQL and read-only access while editor login is pending.
-
-See [validation.md](validation.md) for observed checks and limitations.
-
-## Editor authorization and empty workspaces
-
-Vercel page access and app edit permission are separate. Every POST to the public
-experiment endpoint verifies an RS256 Cloudflare Access application JWT against
-the configured issuer's rotating JWKS, audience, expiry, issued-at time and
-nonempty user identity. Only a verified email in `PARALLAX_EDITOR_EMAILS` may
-create an experiment. Claimed email headers, service identities, global Access
-tokens and Vercel share links do not grant write permission. Failed verification
-or absent configuration leaves the workspace read only. GET requests retain the
-existing Vercel Authentication boundary. No public edit/delete API exists.
-
-The initial editor allowlist is the verified owner account from Vercel; its value
-is kept in Vercel settings, not in this public repository. Adding another editor
-requires the owner to approve that identity, update the Access application policy
-and the server allowlist, then redeploy. Keep application sessions at eight hours
-or less. Revocation requires updating both controls; redeploying the allowlist
-blocks an otherwise valid existing token at the application boundary.
-
-Proposed Access configuration awaiting approval:
-
-- Organization: Parallax Lab, `pdeng-parallax.cloudflareaccess.com`.
-- One self-hosted app for `parallax.pdeng.pp.ua`, eight-hour sessions.
-- Allow only the owner email, authenticated by Cloudflare or one-time email PIN.
-- Enable HttpOnly and binding cookies. Do not create an Everyone/bypass policy.
-- Keep Vercel Authentication for All Deployments. Raw Vercel URLs still require a
-  valid editor JWT to write; shared Vercel pages are view only.
-
-**Current activation status:** Cloudflare Access is not enabled on the account.
-Automatic approval review rejected organization creation as an account-level
-security change requiring explicit approval. Issuer and audience must remain
-unset until the actual organization and app are provisioned and verified. This
-means nobody, including the owner, can create a hosted experiment yet.
-
-New databases start empty. The seed fixture remains available only for isolated
-local tests by explicitly setting `PARALLAX_SEED_DEMO=1`. `scripts/dev.py` and
-localhost-only Compose opt in to local writes; Vercel ignores that opt-in.
-The browser suite seeds its own temporary database and does not touch Neon.
-
-For this security rollout, use a new runtime role with the same minimal
-SELECT/INSERT grants, deploy its credentials, then revoke INSERT on experiments
-and events from the old role. This also invalidates writes from old immutable
-Vercel deployments. Never roll back to a deployment without the editor guard.
-The operator can remove specifically identified seed/audit rows in one locked
-transaction, briefly disabling only the two immutable-record triggers and
-re-enabling them before commit. Do not remove actual research records or weaken
-runtime privileges. Verify both environments remain empty after a cold start.
-
-
-Cleanup and automatic-deployment checks completed on 2026-10-12: both production
-and preview contain zero experiments and zero events. Both immutable triggers
-are enabled. The old role has no INSERT privileges, and the new runtime role has
-only the required SELECT/INSERT grants. Main commit `703da57d` automatically
-created READY production deployment `dpl_AstMwSgdaapd4xZeJMdnaUQYKzAP` with
-`source: git`; custom-domain health and empty listing both returned HTTP 200.
-
-## Market data (schema 2)
-
-Apply `002_market_cache.sql` after schema 1 on each branch, then grant the current
-runtime role `SELECT, INSERT, UPDATE ON market_state`. Do not grant mutation rights
-on experiments/events. The migration runner now applies all pending versions.
-
-The existing Free Neon project is reused. External market reads default on only
-in Vercel Production. Keep preview offline unless it has a separate provider
-allocation. Add sensitive `TIINGO_API_KEY` to Production and redeploy to activate
-stock history. Bank of Canada needs no key. See the [market-data audit](market-data-audit-2026-10-12.md)
-for quotas, attribution, private-use terms and activation limitations.
+CI covers PostgreSQL, backend coverage, proxy authorization, browser flows and
+both container builds. Verify the protected candidate, advance `main`, then
+expose only production aliases through Standard Protection. Confirm anonymous
+public access succeeds while private reads, writes, exports and old immutable
+URLs remain protected. Production stays empty until the owner creates real,
+properly licensed research; browser fixtures use a temporary local database.

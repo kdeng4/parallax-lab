@@ -9,6 +9,8 @@ import { EquityChart, RUN_COLORS } from './equity-chart';
 import { ExperimentDialog } from './experiment-dialog';
 import { AuditTimeline } from './audit-timeline';
 import { MarketOverview } from './market-overview';
+import { ContextOverview } from './context-overview';
+import { SignOut } from './sign-in';
 
 const NAV_ITEMS: { id: Section; title: string; icon: typeof BarChart3 }[] = [
   { id: 'overview', title: 'Overview', icon: BarChart3 },
@@ -18,7 +20,7 @@ const NAV_ITEMS: { id: Section; title: string; icon: typeof BarChart3 }[] = [
 ];
 
 export function Workbench() {
-  const [access, setAccess] = useState<EditorAccess>({ canEdit: false, email: null, reason: 'sign_in' });
+  const [access, setAccess] = useState<EditorAccess>({ canView: false, canEdit: false, email: null, reason: 'sign_in' });
   const canEdit = access.canEdit;
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
@@ -51,7 +53,7 @@ export function Workbench() {
       if (!response.ok) throw new Error('Session unavailable');
       const session: EditorAccess = await response.json();
       if (!cancelled) setAccess(session);
-    }).catch(() => { if (!cancelled) setAccess({ canEdit: false, email: null, reason: 'sign_in' }); });
+    }).catch(() => { if (!cancelled) setAccess({ canView: false, canEdit: false, email: null, reason: 'sign_in' }); });
     return () => { cancelled = true; };
   }, [refreshId]);
   useEffect(() => {
@@ -91,6 +93,7 @@ export function Workbench() {
     <div className="main-shell">
       <header className="topbar"><div className="breadcrumb"><button className="icon-button menu-toggle" aria-label="Open navigation" aria-expanded={mobileMenu} onClick={() => setMobileMenu(!mobileMenu)}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{NAV_ITEMS.find((item) => item.id === section)?.title}</strong></div><div className="topbar-right">{selectedExperiment && <span className="topbar-date">{date(selectedExperiment.created_at)}</span>}<span className="environment-label"><span className="status-dot" />Paper environment</span><div className="topbar-divider" /><span className="topbar-initial">P</span></div></header>
       <main id="main-content" tabIndex={-1}>
+        <div className="private-controls"><a href="/" className="text-button">Public dashboard</a><SignOut /></div>
         <div className="page-heading"><div><div className="eyebrow heading-eyebrow">THE RESEARCH WORKBENCH</div><h1>{section === 'overview' ? 'A little more signal.' : section === 'experiments' ? 'Your ideas, put to the test.' : section === 'strategies' ? 'The thinking behind the trade.' : 'Nothing lost in the details.'}</h1><p>{section === 'overview' ? 'Different approaches. Identical conditions. A clearer perspective.' : section === 'experiments' ? 'Every experiment is a reproducible record of what worked—and why.' : section === 'strategies' ? 'Versioned Markdown strategies. Explicit rules. Reproducible comparisons.' : 'Follow every observation, decision, and paper fill from start to finish.'}</p></div><button className="button primary new-experiment" onClick={() => setModal(true)} disabled={!catalog || !canEdit}><Plus size={17} />New experiment</button></div>
         <div className="mode-note"><ShieldCheck size={14} /><span>Paper trading</span><span className="note-dot">·</span><span>{catalog?.data_source === 'synthetic' ? 'Local test fixtures' : 'Real daily market data'}</span><span className="note-dot">·</span><span>Local baseline models</span></div>
         {!canEdit && <div className="mode-note" role="status"><ShieldCheck size={14} /><span>{access.reason === 'not_configured' ? 'Read only. Editor sign-in is awaiting setup.' : access.reason === 'not_approved' ? 'Read only. Your account has not been approved to create experiments.' : 'Read only. Creating experiments requires an approved editor sign-in.'}</span></div>}
@@ -99,6 +102,8 @@ export function Workbench() {
         {loading && !catalog ? <LoadingState /> : <>
           {section === 'overview' && <>
             <MarketOverview />
+            <ContextOverview />
+            {catalog?.replay_requirement && <p className="market-notice">{catalog.replay_requirement}</p>}
             <div className="comparison-bar"><div role="tablist" aria-label="Comparison dimension" className="comparison-tabs"><button id="models-tab" role="tab" aria-selected={comparison === 'models'} aria-controls="comparison-panel" className={comparison === 'models' ? 'active' : ''} onClick={() => chooseComparison('models')}><Layers3 size={16} />Model comparison</button><button id="strategies-tab" role="tab" aria-selected={comparison === 'strategies'} aria-controls="comparison-panel" className={comparison === 'strategies' ? 'active' : ''} onClick={() => chooseComparison('strategies')}><Code2 size={16} />Strategy comparison</button></div><span className="comparison-hint">One variable. A fair comparison.</span></div>
             <div id="comparison-panel" role="tabpanel" aria-busy={detailLoading} aria-labelledby={`${comparison}-tab`}>
               <div className="experiment-toolbar"><div className="experiment-picker"><FlaskConical size={17} /><label htmlFor="experiment-selector" className="sr-only">Selected experiment</label><select id="experiment-selector" value={comparisonExperiments.some((item) => item.id === selectedId) ? selectedId : ''} onChange={(event) => setSelectedId(event.target.value)}>{comparisonExperiments.length === 0 && <option value="">No {comparison} experiments yet</option>}{comparisonExperiments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={14} /></div><div className="toolbar-actions">{matchingExperiment && <span className="completed-badge"><span className="status-dot" />Completed</span>}<button className="icon-button" aria-label="Refresh experiments" title="Refresh experiments" disabled={busy} onClick={() => setRefreshId((value) => value + 1)}><RefreshCw size={16} className={busy ? 'spin' : ''} /></button>{matchingExperiment && <a className="button secondary small" href={`/api/v1/experiments/${matchingExperiment.id}/export`} download={`${matchingExperiment.id}.json`}><Download size={15} />Export</a>}</div></div>

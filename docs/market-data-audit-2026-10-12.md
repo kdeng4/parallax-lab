@@ -1,5 +1,10 @@
 # Market data audit and implementation — 2026-10-12
 
+> Correction: the later [public/private audit](public-private-audit-2026-10-12.md)
+> found Starter storage restrictions in the October 6 Tiingo terms. Its transient
+> data policy and separate publication gate supersede the cache/activation
+> description below, which records the earlier implementation.
+
 Scope: current `main`, the supplied provider comparison, live provider documentation,
 and the existing Vercel/Neon configuration. This is a code and integration audit,
 not a certification of provider data or investment results.

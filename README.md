@@ -17,6 +17,20 @@ See [validation results](docs/validation.md) for the checks executed in this env
 See [deployment requirements](docs/deployment.md) before connecting a Vercel
 frontend to a hosted API.
 
+## Public dashboard and owner workspace
+
+The homepage exposes agent names and eligible published performance/activity only.
+All market/news data, settings and experiments live under `/workspace`, protected
+by a verified, allowlisted Google identity through Neon Auth. See
+[deployment setup](docs/deployment.md) for OAuth and provider credentials.
+
+The public chart compares indexed agent portfolios with matched SPY sessions.
+It stays empty until real research with suitable publication rights exists.
+Tiingo Starter data is transient and cannot be saved in immutable research;
+persistent replays and public curves require verified data entitlements.
+News/event adapters are implemented, but current baseline algorithms do not use
+news or run continuously. Missing credentials produce explicit connection states.
+
 ## What is implemented
 
 - Model comparison with a fixed strategy; strategy comparison with a fixed model.

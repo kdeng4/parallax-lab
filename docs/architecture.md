@@ -49,10 +49,10 @@ SQLite file; use a transactional database and persistent task scheduler first.
 The API is reachable directly on loopback during local development. Browsers
 call the Next.js same-origin proxy; credentials and provider requests belong on
 the API server. Local development has no user authentication and remains on loopback. The
-container configuration binds published ports to loopback by default. Hosted
-deployments use Vercel Authentication on every frontend URL, a private FastAPI
-service with a server-only bearer token, and a runtime same-origin proxy. This
-is a private single-user workspace, not a multi-tenant authentication model.
+container configuration binds published ports to loopback by default. Hosted deployments use an explicit public projection and a private FastAPI
+service with a server-only bearer token. Every research proxy read and write
+requires an approved Neon Google identity. Vercel protects previews and immutable
+deployment URLs. The workspace has an owner allowlist, not multi-tenant data access.
 
 Hosted storage uses Neon PostgreSQL with independent production and preview
 branches. Versioned migrations run separately from the restricted application

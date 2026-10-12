@@ -1,4 +1,4 @@
-// This handler runs behind Vercel Authentication for ALL deployed URLs.
+// Every research read and write requires application authentication.
 // It is the only caller of the private Python service; credentials stay here.
 import { editorAccess } from '../../../../lib/editor-access.ts';
 
@@ -16,7 +16,7 @@ function fail(detail: string, status: number) {
 async function proxy(request: Request, context: Context) {
   const { path } = await context.params;
   const route = path.join('/');
-  if (!/^(health|catalog|market\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
+  if (!/^(health|catalog|(?:market|context)\/overview|experiments(?:\/[0-9a-f-]{36}(?:\/(events|export))?)?)$/.test(route)) {
     return fail('Not found', 404);
   }
   if (request.method === 'POST' && route !== 'experiments') return fail('Method not allowed', 405);
@@ -27,6 +27,10 @@ async function proxy(request: Request, context: Context) {
   if (!origin || (hosted && (!token || token.length < 32))) {
     return fail('Research service is not configured', 503);
   }
+
+  const access = await editorAccess(request);
+  if (!access.canView) return fail('Sign in with an approved Google account to access the private workspace.',
+    access.reason === 'not_configured' ? 503 : access.reason === 'not_approved' ? 403 : 401);
 
   let body: Uint8Array | undefined;
   if (request.method === 'POST') {
@@ -41,7 +45,6 @@ async function proxy(request: Request, context: Context) {
     if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') {
       return fail('Use application/json', 415);
     }
-    const access = await editorAccess(request);
     if (!access.canEdit) {
       return fail(access.reason === 'not_configured'
         ? 'Editor authentication is not configured. This workspace is read only.'
@@ -67,7 +70,7 @@ async function proxy(request: Request, context: Context) {
   try {
     const url = new URL(`/api/v1/${route}`, origin);
     // Market refresh parameters and arbitrary upstream URLs are never accepted.
-    url.search = route === 'market/overview' ? '' : new URL(request.url).search;
+    url.search = route.endsWith('/overview') ? '' : new URL(request.url).search;
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (token) headers.set('Authorization', `Bearer ${token}`);
     const upstream = await fetch(url, {

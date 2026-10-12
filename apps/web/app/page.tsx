@@ -1,5 +1,5 @@
-import { Workbench } from '@/components/workbench';
+import { PublicDashboard } from '@/components/public-dashboard';
 
 export default function Page() {
-  return <Workbench />;
+  return <PublicDashboard />;
 }

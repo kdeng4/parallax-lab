@@ -12,7 +12,7 @@ test('owner can save additional tickers without triggering data calls, and selec
     await page.getByRole('button', { name: 'Save tickers' }).click();
     await expect(page.getByText('Saved. Use Check data to fetch your updated list.')).toBeVisible();
     expect(marketCalls).toBe(callsBeforeSave);
-    await expect(page.getByTestId('market-overview').getByRole('cell', { name: /TSLA/ })).toBeVisible();
+    await expect(page.getByTestId('market-overview').getByRole('rowheader', { name: /TSLA/ })).toBeVisible();
     await page.getByRole('button', { name: /New experiment/ }).first().click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('Market').locator('option')).toHaveText(['TSLA', 'AMD', 'BRK-B']);

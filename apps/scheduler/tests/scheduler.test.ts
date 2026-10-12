@@ -40,7 +40,7 @@ test('hourly fallback refreshes once, so idle cron does not wake the database ev
   await run(now + 60_000); assert.equal(calls.length, 1);
   await run(cached.fetched_at + 3_600_001); assert.equal(calls.length, 2);
   assert.equal(calls[0].url, 'https://parallax.pdeng.pp.ua/api/scheduler/plan');
-  assert.equal(calls[0].init?.redirect, 'error');
+  assert.equal(calls[0].init?.redirect, 'manual');
 });
 test('active window sends only authenticated tick with an empty body', async () => {
   const now = Date.parse('2026-10-12T14:00:00Z');
@@ -50,7 +50,7 @@ test('active window sends only authenticated tick with an empty body', async () 
   assert.equal(calls[0].url, 'https://parallax.pdeng.pp.ua/api/scheduler/tick');
   assert.equal(calls[0].init?.method, 'POST'); assert.equal(calls[0].init?.body, '{}');
   assert.equal(calls[0].init?.headers.Authorization, `Bearer ${env().SCHEDULER_TOKEN}`);
-  assert.equal(calls[0].init?.redirect, 'error');
+  assert.equal(calls[0].init?.redirect, 'manual');
 });
 test('health leaks no schedule/secret and sync cannot be called by a visitor', async () => {
   const health = await worker.fetch(new Request('https://scheduler.example/health'), env());

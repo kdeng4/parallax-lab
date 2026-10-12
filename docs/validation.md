@@ -173,3 +173,20 @@ The production data storage/publication assertions remain disabled. No real
 ongoing study has been started with unverified data entitlements, and no example
 portfolio or source article is seeded into the deployed workspace. Actual owner
 OAuth callback verification still needs the owner's browser session.
+
+## Cloudflare runtime verification
+
+Production Vercel checks passed after PR #8: public page and projection return
+200, anonymous workspace access redirects to sign-in, private reads/writes and
+scheduler calls return 401, and authenticated plan/tick calls return 200 with
+zero active studies or model calls. Production schema is version 3 with no
+seeded study records.
+
+The deployed Workers runtime rejected the WHATWG `redirect: error` mode that
+Node mocks accept. The scheduler now uses `manual` and rejects every non-success
+status, so redirects never forward its credential. Sanitized failure codes
+separate HTTP, JSON, transport and KV errors without returning provider bodies
+or keys. A native Miniflare/workerd regression test verifies successful KV sync
+and a rejected 302, preserving the previous plan and never reaching the redirect
+target. The 9 scheduler tests pass. Real authenticated Cloudflare-to-Vercel plan
+sync returns 200, the KV plan exists, and minute cron is configured.

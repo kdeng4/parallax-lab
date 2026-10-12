@@ -4,6 +4,11 @@ The repo deploys as two Vercel Services: Next.js in `apps/web` and private FastA
 in `apps/api`. Cloudflare remains DNS-only. Neon supplies PostgreSQL and managed
 GitHub identity. No Cloudflare Access organization or account-wide policy is needed.
 
+The stable public production URL is `https://parallax.pdeng.pp.ua`.
+Vercel has verified this custom domain and attaches it to the latest production
+deployment. Use it for repository Website metadata and public links; immutable
+deployment URLs remain protected.
+
 ## Public and private boundary
 
 - `/` and `/api/public/dashboard` expose only agent names and an explicitly

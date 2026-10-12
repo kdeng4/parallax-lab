@@ -7,6 +7,7 @@ Validated in the cloud development environment on 2026-10-12.
 | Locked setup (`bash scripts/setup.sh`) | Passed, including a clean npm reinstall |
 | Engine, API, storage and mocked providers (`pytest`) | 98 passed; 94.22% branch-inclusive coverage (90% CI floor) |
 | Browser integration (`npm run test:e2e`) | 10 passed |
+| Release language | CJK scan passed; browser checks `en-CA` and USD formatting |
 | Frontend production build | Passed |
 | TypeScript check | Passed |
 | API and web Docker images | Built successfully with TLS verification enabled |
@@ -29,6 +30,11 @@ a fully loaded mobile layout, connection recovery, and preventing stale
 results when an experiment selection fails. Tests use an isolated temporary
 database and a system Chromium browser. The 90-second per-test limit allows
 for development-proxy latency on this cloud host.
+
+The published implementation plan and interface copy use Canadian English.
+The page declares `en-CA`; dates, times, quantities, and USD amounts use that
+locale. CI rejects CJK text in release files, and browser tests verify the
+page language and USD display.
 
 Runtime checks use actual local algorithms and synthetic market data. No live
 market feed, paid model endpoint, broker, external authentication system, hosted

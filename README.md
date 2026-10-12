@@ -7,7 +7,7 @@ snapshot, records every decision and fill, and makes results comparable in one
 minimal interface. The first milestone is a working local research application:
 **synthetic market data, local baseline algorithms, simulated funds.**
 
-The phased [implementation plan (中文)](docs/implementation-plan.md) maps the full
+The phased [implementation plan](docs/implementation-plan.md) maps the full
 design to live data, cloud model execution, distributed workers and production
 operations. [Architecture](docs/architecture.md) and the
 [API contract](docs/api-contract.md) document the current boundaries.
@@ -87,7 +87,7 @@ Stop the development launcher before running browser tests: Next.js development
 processes share a build-directory lock. The tests start isolated services and a
 temporary database. To use an
 existing Chromium installation, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
-Validation covers actual account behavior and both comparison workflows.
+Validation covers actual account behaviour and both comparison workflows.
 The same backend coverage gate runs in CI. See [testing](docs/testing.md) for
 the test boundaries and the acceptance gates for upcoming integrations.
 
@@ -115,7 +115,7 @@ secrets are copied into the final application image.
 
 Decisions at candle close execute at the following candle's open. Transaction
 costs apply to every fill; no shorting or leverage. These execution assumptions
-do not simulate liquidity, order queues, corporate actions or broker behavior.
+do not simulate liquidity, order queues, corporate actions or broker behaviour.
 Short synthetic runs are useful for validating software, not selecting a model
 for real money. Read the API documentation for metric conventions.
 

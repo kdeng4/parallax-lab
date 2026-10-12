@@ -1,69 +1,69 @@
-# Patrick 智能交易研究平台 · 实施计划
+# Patrick Intelligent Trading Research Platform · Implementation Plan
 
-## 产品目标
+## Product goal
 
-让研究人员能够回答：在**完全相同的行情、资金、交易成本和策略版本**下，哪个模型表现更好？同一模型换一个策略脚本，结果是否改善？每一个结论都必须能够追溯到行情快照、决策摘要、成交和账户变动。
+Help researchers answer: which model performs better with **identical market data, capital, transaction costs, and strategy versions**? Does changing the strategy script improve the results for the same model? Every conclusion must be traceable to a market-data snapshot, a decision summary, fills, and account changes.
 
-优先交付可验证的闭环，再拆分有真实负载需求的服务。第一阶段是单用户本地研究工作台，不能直接作为公开、多租户或真实资金交易系统部署。
+Deliver a verifiable end-to-end workflow first. Split components into separate services when actual workload warrants it. Milestone 1 is a single-user local research workbench; it is not ready for public, multi-tenant, or real-money deployment.
 
-## 技术选型
+## Technology choices
 
-| 层 | 选型 | 原因 |
+| Layer | Choice | Rationale |
 | --- | --- | --- |
-| Web | Next.js 16.4、React 19.3、TypeScript 7 | App Router、类型约束、前后端同源代理 |
-| 样式 | CSS design tokens、响应式 CSS、Lucide | 克制的界面、响应式布局、可访问控件 |
-| API | Python 3.12、FastAPI 0.143、Pydantic 2 | 严格请求验证、OpenAPI、可扩展的模型生态 |
-| 依赖 | npm lockfile、uv lockfile | 精确安装与可复现开发环境 |
-| 本地持久化 | SQLite | 无需凭证和外部服务即可运行完整实验 |
-| 后续共享存储 | PostgreSQL + TimescaleDB 扩展 | 统一关系事务、审计与行情时间序列；按真实规模验证版本兼容性 |
-| 后续消息总线 | NATS JetStream + transactional outbox | 持久化消费、去重、重放和服务解耦 |
-| 测试 | pytest + Playwright + production build | 资金守恒、时序正确性、API 与浏览器闭环 |
-| 交付 | Docker Compose、GitHub Actions | 本地可复现部署与持续验证 |
+| Web | Next.js 16.4, React 19.3, TypeScript 7 | App Router, type safety, and a same-origin proxy to the API |
+| Styling | CSS design tokens, responsive CSS, Lucide | A restrained interface, responsive layout, and accessible controls |
+| API | Python 3.12, FastAPI 0.143, Pydantic 2 | Strict request validation, OpenAPI, and an extensible model ecosystem |
+| Dependencies | npm and uv lockfiles | Exact installation and a reproducible development environment |
+| Local persistence | SQLite | Full experiments without credentials or external services |
+| Future shared storage | PostgreSQL with TimescaleDB | Relational transactions, audit records, and market time series in one stack; validate version compatibility at the required scale |
+| Future event bus | NATS JetStream with a transactional outbox | Durable consumption, deduplication, replay, and service decoupling |
+| Tests | pytest, Playwright, and a production build | Account conservation, correct event timing, and complete API/browser workflows |
+| Delivery | Docker Compose and GitHub Actions | Reproducible local deployment and continuous validation |
 
-应用依赖版本在实施时通过 npm / PyPI 稳定发布接口核实，并锁定到仓库。基础设施版本按兼容性和安全更新选用，不使用无约束的 `latest` 标签。新版本升级必须经过同一套验证。
+Application dependency versions were checked against stable npm and PyPI releases during implementation and locked in the repository. Infrastructure versions will be chosen for compatibility and security updates, without unbounded `latest` tags. Every upgrade must pass the same validation suite.
 
-## 阶段 1 · 当前实现：可复现的纸面交易研究闭环
+## Milestone 1 · Implemented: reproducible paper-trading research
 
-- 固定随机种子生成确定性的合成 OHLCV 数据；所有参与者共享相同数据与内容哈希。
-- 本地动量、均值回归、买入持有基准；Markdown 策略版本化。
-- 模型对比只改变模型；策略对比只改变策略。服务端拒绝混杂实验设计。
-- 每个实验参与者独立现金与持仓。只做多、无杠杆。收盘信号最早在下一根开盘成交，计入手续费与滑点。
-- 保存净值、收益、最大回撤、卖出成交盈利比例（含部分平仓）与有说明的 Sharpe 指标。
-- 保存行情事件、决策摘要、订单、成交、风险拒绝和完成事件；能够按参与者、事件类型与时间过滤。
-- Web 提供对比曲线、指标表、历史实验、策略查看、日志筛选、创建实验、JSON 导出。
-- API 凭证只存在服务端；OpenAI / Anthropic 适配器独立测试，第一阶段实验不调用收费服务。
+- A fixed random seed produces deterministic synthetic OHLCV data. All participants share the same dataset and content hash.
+- Local momentum, mean-reversion, and buy-and-hold baselines use versioned Markdown strategies.
+- Model comparison changes only the model; strategy comparison changes only the strategy. The API rejects experiments that change both factors.
+- Each participant has independent cash and positions. Trading is long only, without leverage. A signal at candle close can fill no earlier than the next candle's open, with fees and slippage.
+- The system saves equity, returns, maximum drawdown, the proportion of profitable sell fills (including partial exits), and a documented Sharpe ratio.
+- Market events, decision summaries, orders, fills, risk refusals, and completion events are saved and can be filtered by participant, event type, and time.
+- The web app provides comparison curves, a metrics table, experiment history, strategy inspection, audit filters, experiment creation, and JSON export.
+- API credentials remain on the server. OpenAI and Anthropic adapters are tested independently; milestone 1 experiments do not call paid services.
 
-**验收**：锁定依赖安装成功；引擎与 API 测试通过；前端生产构建通过；浏览器能够创建两种实验、查看对应结果、筛选日志、导出复现文件；重启不丢失实验。
+**Acceptance:** locked dependencies install; engine and API tests pass; the production frontend builds; browser tests create both experiment types, show their results, filter the audit log, and export a reproducibility file; experiments survive a restart.
 
-## 阶段 2 · 真实行情与云端模型
+## Milestone 2 · Live market data and cloud models
 
-1. 选定行情授权和市场范围；实现单一数据源适配器，将行情归一化为带交易所时间戳的事件。区分数据延迟、缺口、拆股、复权和交易时段。
-2. 接入 OpenAI、Anthropic 的显式模型版本和结构化输出；配置超时、重试、并发、费用上限、拒绝响应与无效指令处理。模型失败应记为失败，不能悄悄用基准模型替代。
-3. 每一轮创建不可变的共同输入快照，记录数据截止时间与预算。多模型决策在统一截止点汇合，避免模型延迟改变交易机会。
-4. 将运行过程变成持久任务；先做 cancel / resume / idempotency，再引入 NATS JetStream worker。使用 outbox 原子发布事务事件，消费端以事件 ID 去重。
-5. 行情回放与实时实验共用引擎接口；增加 SSE 状态推送和断线恢复。
-6. 在共享部署前完成 OIDC 登录、会话保护、租户隔离、实验权限、CSRF、防滥用、密钥管理与 TLS。
+1. Choose licensed market data and the market scope. Implement an adapter for one source that normalizes updates into events with exchange timestamps. Account for latency, gaps, splits, adjusted prices, and trading sessions.
+2. Integrate explicit OpenAI and Anthropic model versions with structured outputs. Set timeouts, retries, concurrency, spending limits, and handling for refusals and invalid instructions. Record a model failure as a failure; never silently substitute a baseline.
+3. Create an immutable shared input snapshot for each decision round, recording its data cutoff and budget. Gather model decisions at a common deadline so model latency cannot change trading opportunities.
+4. Turn runs into durable tasks. Implement cancellation, resumption, and idempotency before introducing NATS JetStream workers. Publish transaction events atomically through an outbox and deduplicate by event ID in consumers.
+5. Use the same engine interface for market replay and live experiments. Add server-sent status updates and reconnection recovery.
+6. Before shared deployment, implement OIDC sign-in, protected sessions, tenant isolation, experiment permissions, CSRF protection, abuse prevention, secret management, and TLS.
 
-**验收**：契约测试覆盖提供商正常／拒绝／超时／限流；付费运行获得明确配置且不泄露密钥；两模型使用相同快照；重试不重复成交；授权测试覆盖跨用户访问。
+**Acceptance:** provider contract tests cover success, refusal, timeout, and rate limits; paid runs require explicit configuration and do not expose secrets; two models receive the same snapshot; retries cannot duplicate a fill; authorization tests cover cross-user access.
 
-## 阶段 3 · 研究可靠性和生产运营
+## Milestone 3 · Research reliability and production operations
 
-- PostgreSQL 事务账本、迁移工具、Timescale 行情分区与保留策略；保留已有 Decimal 账户核算并加入市场最小报价／最小交易单位规则。
-- 训练／验证／样本外分离、walk-forward、置信区间、多重比较修正；不以短期回放收益宣称策略优劣。
-- 记录模型版本、提示词、工具调用摘要、参数、数据版本和成本。需要跨团队研究时接入 MLflow；当前 JSON 导出与内容哈希构成基础记录。
-- OpenTelemetry tracing + Prometheus 指标 + Grafana；监控消费延迟、数据缺口、决策费用、失败率与账本不变量。
-- 容器镜像扫描、受控镜像发布、Kubernetes 部署、资源限额、服务认证、数据库备份及恢复演练。
+- Add a transactional PostgreSQL ledger, migrations, TimescaleDB market-data partitioning, and retention policies. Keep Decimal account calculations and add market-specific tick-size and minimum trade-unit rules.
+- Separate training, validation, and out-of-sample results. Add walk-forward analysis, confidence intervals, and multiple-comparison corrections; do not claim strategy superiority from short replays.
+- Record model versions, prompts, tool-call summaries, parameters, data versions, and costs. Add MLflow when cross-team research needs it; the current JSON export and content hashes form the initial record.
+- Add OpenTelemetry tracing, Prometheus metrics, and Grafana dashboards. Monitor consumer lag, data gaps, decision costs, failure rates, and ledger invariants.
+- Add container-image scanning, controlled image publishing, Kubernetes deployment, resource limits, service authentication, database backups, and restore drills.
 
-**验收**：故障注入验证不重复订单；备份恢复演练达到约定的 RPO / RTO；压测给出吞吐与延迟基线；独立安全评审完成。
+**Acceptance:** fault injection confirms orders cannot be duplicated; restore drills meet agreed recovery point and recovery time objectives (RPO/RTO); load tests establish throughput and latency baselines; an independent security review is complete.
 
-## 阶段 4 · 真实资金（独立立项）
+## Milestone 4 · Real-money trading (separate project)
 
-本仓库第一阶段没有真实订单接口。后续必须先完成券商沙盒、人工审批、最大损失／仓位／敞口限制、kill switch、对账、市场规则和合规评估，再考虑受限资金试运行。模拟表现不构成实盘收益保证。
+Milestone 1 has no interface for real orders. Before any limited-capital trial, a later project must complete broker sandbox testing, human approval, maximum-loss, position, and exposure limits, a kill switch, reconciliation, market-rule review, and compliance assessment. Simulation results do not guarantee live returns.
 
-## 关键架构约束
+## Key architecture constraints
 
-- 事件记录输出可观察的决策摘要和结构化依据，不要求或存储模型私有思维链。
-- 任何对比图都显示数据来源；本地算法不冠以 OpenAI / Claude 等名称。
-- 不把不同策略下相同模型的账户收益合并为“模型成绩”。每条曲线对应明确的实验参与者。
-- 微服务切分以部署、故障隔离和吞吐需求为依据；第一阶段的模块边界不能被描述为已上线的分布式服务。
-- 内存中的对象和运行进程不作为持久化保证；实验结果落盘，服务在新任务中显式启动。
+- Audit events contain observable decision summaries and structured reasons. They do not require or store a model's private chain of thought.
+- Every comparison chart identifies its data source. Local algorithms must not be labelled as OpenAI, Claude, or other cloud models.
+- Do not combine one model's account returns across different strategies into a single “model performance” figure. Each curve belongs to a clearly identified experiment participant.
+- Split services according to deployment, fault-isolation, and throughput needs. Milestone 1 module boundaries must not be described as deployed distributed services.
+- In-memory objects and running processes are not a persistence guarantee. Save experiment results to storage and explicitly start services in each new environment.

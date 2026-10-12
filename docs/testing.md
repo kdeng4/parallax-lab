@@ -18,8 +18,14 @@ npm run test:e2e
 GitHub Actions runs both gates and builds the Docker images on pushes and pull
 requests. The backend's 90% branch-inclusive coverage floor prevents large
 untested changes; passing it does not prove strategy quality or live-trading
-safety. Review the uncovered lines and the test behavior when changing the
+safety. Review the uncovered lines and the test behaviour when changing the
 execution or accounting rules.
+
+Published copy uses Canadian English (`en-CA`). Keep Canadian spellings such as
+“behaviour” and retain established API field names. Monetary values remain in
+USD because the simulated market and accounts are USD-denominated. CI runs
+`scripts/check_release_language.py` to reject CJK text in release files; browser
+tests verify the page language and USD display under the Canadian locale.
 
 | Boundary | Current checks |
 | --- | --- |

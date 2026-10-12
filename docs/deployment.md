@@ -55,9 +55,15 @@ calling GitHub activation complete. Production OAuth still requires the app
 credentials; GitHub's connected development tools do not supply an OAuth client
 or a website browser session.
 
-The browser credential-protection gate currently blocks the OAuth registration
-page from agent observation. The owner must complete GitHub app registration
-and enter its credentials in Neon before activation can be verified.
+Production GitHub OAuth credentials were configured on October 12, 2026.
+Email/password and email signup were verified disabled; production readiness is
+enabled and preview readiness remains disabled. Deployment and anonymous-access
+checks passed. Actual owner-session verification remains pending because browser
+credential protection prevented automated observation; activation is not proof
+of a completed OAuth callback.
+
+Legacy `PARALLAX_SEED_DEMO`, `NEON_AUTH_GOOGLE_READY` and email allowlist variables
+are ignored. Application startup no longer contains sample-data creation code.
 
 ## Private data integrations
 

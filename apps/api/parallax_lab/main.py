@@ -19,9 +19,6 @@ from .schemas import SYMBOLS, ExperimentInput
 from .storage import Store, open_store
 from .strategy import load_strategies
 
-DEMO_ID = "d93865f4-352f-5a14-b80d-e0453b018540"
-
-
 def stream_json(value: dict, *, status_code: int = 200, headers: dict | None = None, indent=None):
     def chunks():
         parts, length = [], 0
@@ -44,7 +41,7 @@ def default_database_url() -> str:
     return f"sqlite:///./{path.as_posix()}"
 
 
-def create_app(database_url: str | None = None, seed_demo: bool | None = None) -> FastAPI:
+def create_app(database_url: str | None = None) -> FastAPI:
     api_token = os.getenv("PARALLAX_API_TOKEN", "")
     fixture_mode = os.getenv("VERCEL") != "1" and os.getenv("PARALLAX_MARKET_SOURCE") == "synthetic"
 
@@ -62,19 +59,6 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         if not app.state.market.persistent_tiingo:
             app.state.market.cache.discard_tiingo_content()
         app.state.context = ContextFeeds(app.state.market)
-        seed_setting = os.getenv("PARALLAX_SEED_DEMO")
-        if seed_setting is None:
-            seed_setting = os.getenv("PATRICK_SEED_DEMO", "0")
-        should_seed = os.getenv("VERCEL") != "1" and (
-            seed_demo if seed_demo is not None else seed_setting == "1"
-        )
-        if should_seed and not store.has(DEMO_ID):
-            try:
-                store.save(run_experiment(ExperimentInput(name="Opening bell · baseline study"), DEMO_ID))
-            except store.integrity_error:
-                # Concurrent worker startup may have committed this exact seed first.
-                if not store.has(DEMO_ID):
-                    raise
         yield
 
     app = FastAPI(title="Parallax Lab · paper-trading research", version="0.1.0", lifespan=lifespan,

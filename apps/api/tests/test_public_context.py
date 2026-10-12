@@ -86,8 +86,8 @@ def test_public_projection_and_benchmark_hide_settings_prices_and_quantities(sto
     # An immutable run not approved at creation never becomes public through an env change.
     detail['metadata']['public_performance_approved'] = False
     class NoApproval:
-        def list_experiments(self): return [detail]
-        def get(self, _): return detail
+        def list_experiments(self, *, limit=None): return [detail]
+        def get(self, _, *, include_events=True): return detail
     assert public_dashboard(NoApproval())['series'] == []
 
 
@@ -156,7 +156,7 @@ def test_private_routes_and_storage_gate_fail_closed(tmp_path, monkeypatch):
     monkeypatch.delenv('PARALLAX_MARKET_SOURCE')
     monkeypatch.setenv('PARALLAX_TIINGO_STORAGE_APPROVED', '0')
     monkeypatch.setenv('PARALLAX_API_TOKEN', 'private-service-token')
-    with TestClient(create_app(f'sqlite:///{tmp_path / "api.db"}', seed_demo=False)) as client:
+    with TestClient(create_app(f'sqlite:///{tmp_path / "api.db"}')) as client:
         for path in ('public/dashboard', 'context/overview', 'catalog'):
             assert client.get('/api/v1/' + path).status_code == 401
         client.headers['Authorization'] = 'Bearer private-service-token'
@@ -179,7 +179,7 @@ def test_daily_experiment_benchmark_aligns_sessions_and_preserves_missing_data(t
         if symbol == 'SPY' and not benchmark_available:
             raise FeedError('provider_unavailable')
         return dataset
-    with TestClient(create_app(f'sqlite:///{tmp_path / "api.db"}', seed_demo=False)) as client:
+    with TestClient(create_app(f'sqlite:///{tmp_path / "api.db"}')) as client:
         monkeypatch.setattr(client.app.state.market, 'replay', replay)
         response = client.post('/api/v1/experiments', json={'bars': 60, 'symbol': 'AAPL'})
         assert response.status_code == 201

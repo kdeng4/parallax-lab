@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Code2, Download, FlaskConical, Layers3, LoaderCircle, Menu, Plus, RefreshCw, ShieldCheck, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Download, FlaskConical, Layers3, LoaderCircle, Menu, Plus, RefreshCw, ShieldCheck, Sparkles, TrendingUp, X } from 'lucide-react';
 import { api, date, money, percent, time } from '@/lib/api';
 import type { EditorAccess } from '@/lib/editor-access';
 import type { Catalog, Comparison, Detail, Experiment, Run, Section } from '@/lib/types';

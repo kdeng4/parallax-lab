@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from parallax_lab.engine import run_experiment
-from parallax_lab.main import DEMO_ID, create_app
+from parallax_lab.main import create_app
 from parallax_lab.schemas import ExperimentInput
 from parallax_lab.storage import Store
 
@@ -17,7 +17,7 @@ def database_url(tmp_path):
 
 @pytest.fixture
 def client(database_url):
-    with TestClient(create_app(database_url, seed_demo=False)) as client:
+    with TestClient(create_app(database_url)) as client:
         yield client
 
 
@@ -41,12 +41,16 @@ def test_create_persist_export_and_restart(client, database_url):
     export = client.get(endpoint + "/export")
     assert export.headers["content-disposition"] == f'attachment; filename="parallax-lab-{detail["id"]}.json"'
     assert export.json() == detail
+    result_only = client.app.state.store.get(detail["id"], include_events=False)
+    assert "events" not in result_only
+    assert result_only["runs"] == detail["runs"]
+    assert len(client.app.state.store.list_experiments(limit=1)) == 1
     metadata = export.json()["metadata"]
     assert metadata["dataset"]["hash"] == detail["data_hash"]
     assert metadata["dataset"]["generator"] == "parallax-lab-v1"
     assert metadata["strategies"][0]["markdown"].startswith("# ")
     assert metadata["execution"]["fill"] == "next_bar_open"
-    with TestClient(create_app(database_url, seed_demo=False)) as reopened:
+    with TestClient(create_app(database_url)) as reopened:
         assert reopened.get(endpoint).json() == detail
         assert reopened.get("/api/v1/experiments").json()["experiments"][0]["id"] == detail["id"]
 
@@ -58,29 +62,18 @@ def test_database_configuration_prefers_new_name_and_preserves_existing_local_fi
     legacy = tmp_path / ".data" / "patrick.db"
     legacy.parent.mkdir()
     legacy.touch()
-    with TestClient(create_app(seed_demo=False)) as old_client:
+    with TestClient(create_app()) as old_client:
         assert old_client.app.state.store.path == legacy
 
     legacy.unlink()
     current = tmp_path / ".data" / "parallax-lab.db"
-    with TestClient(create_app(seed_demo=False)) as fresh_client:
+    with TestClient(create_app()) as fresh_client:
         assert fresh_client.app.state.store.path == current
 
     monkeypatch.setenv("PATRICK_DATABASE_URL", f"sqlite:///{legacy}")
     monkeypatch.setenv("PARALLAX_DATABASE_URL", f"sqlite:///{current}")
-    with TestClient(create_app(seed_demo=False)) as new_client:
+    with TestClient(create_app()) as new_client:
         assert new_client.app.state.store.path == current
-
-
-def test_seed_configuration_prefers_new_name(tmp_path, monkeypatch):
-    database_url = f"sqlite:///{tmp_path / 'seed.db'}"
-    monkeypatch.setenv("PATRICK_SEED_DEMO", "0")
-    with TestClient(create_app(database_url)) as legacy_client:
-        assert legacy_client.get("/api/v1/experiments").json()["experiments"] == []
-
-    monkeypatch.setenv("PARALLAX_SEED_DEMO", "1")
-    with TestClient(create_app(database_url)) as current_client:
-        assert current_client.get("/api/v1/experiments").json()["experiments"][0]["id"] == DEMO_ID
 
 
 @pytest.mark.parametrize("change", [
@@ -132,13 +125,6 @@ def test_filtered_events_pagination_time_zones_and_invalid_bounds(client):
 @pytest.mark.parametrize("suffix", ["", "/events", "/export"])
 def test_missing_resource_404(client, suffix):
     assert client.get(f"/api/v1/experiments/{uuid4()}{suffix}").status_code == 404
-
-
-def test_seed_idempotent_across_startups(database_url):
-    for _ in range(2):
-        with TestClient(create_app(database_url, seed_demo=True)) as seeded:
-            experiments = seeded.get("/api/v1/experiments").json()["experiments"]
-            assert len(experiments) == 1 and experiments[0]["id"] == DEMO_ID
 
 
 def test_audit_append_only_and_atomic_rollback(database_url):

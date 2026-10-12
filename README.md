@@ -35,7 +35,7 @@ news or run continuously. Missing credentials produce explicit connection states
 
 - Model comparison with a fixed strategy; strategy comparison with a fixed model.
 - Deterministic OHLCV snapshots shared by all participants, with dataset hashes.
-- Cached daily stock indicators (SMA, RSI, MACD) and attributed currency/rate data.
+- Daily stock indicators (SMA, RSI, MACD) and attributed currency/rate data.
 - Persistent cross-worker request budgets and provider cooldowns in Neon.
 - Momentum, mean-reversion and buy-and-hold reference algorithms.
 - Versioned Markdown strategy configurations.
@@ -79,15 +79,17 @@ New installations store data in `apps/api/.data/parallax-lab.db`, which is ignor
 by Git. Existing local databases are retained when the new database is absent.
 Back up the file with SQLite's backup mechanism when retaining research work. Set
 `PARALLAX_DATABASE_URL` before starting the API to use another local database.
-For isolated fixture testing only, export `PARALLAX_MARKET_SOURCE=synthetic`;
-`PARALLAX_SEED_DEMO=1` optionally creates an example outside Vercel. The frontend's
+For isolated fixture testing only, export `PARALLAX_MARKET_SOURCE=synthetic`.
+Application startup never creates sample experiments. Playwright uses an explicit
+test fixture in its temporary database, outside the application startup path. The frontend's
 `API_BASE_URL` defaults to the API's loopback address for local development.
 The server-side API proxy reads this at runtime. Hosted deployments use a private
 Vercel service binding instead; see [deployment](docs/deployment.md).
 
 Hosted storage supports PostgreSQL on Neon, with versioned migrations and
-atomic, immutable experiment records. Vercel Authentication protects all hosted
-URLs, and a server-only token protects the private Python API.
+atomic, immutable experiment records. Vercel Authentication protects previews and
+immutable deployment URLs. The production homepage is public; the owner's GitHub
+identity guards private research, and a server-only token protects the Python API.
 
 For real local data export `PARALLAX_MARKET_NETWORK=1` and `TIINGO_API_KEY`.
 Never expose provider
@@ -153,5 +155,7 @@ for real money. Read the API documentation for metric conventions.
 
 Dependency versions are locked in `apps/web/package-lock.json` and
 `apps/api/uv.lock`. GitHub Actions runs engine/API checks, frontend build and
-browser integration tests. See the plan for the acceptance gates required
+browser integration tests. The prepared default-branch rules require pull requests
+and these checks; see [repository safeguards](docs/repository-safeguards.md) for
+their application status. See the plan for the acceptance gates required
 before shared or production deployment.

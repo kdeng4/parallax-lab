@@ -11,8 +11,6 @@ from .storage import SUMMARY_KEYS
 
 class PostgresStore:
     dialect = "postgresql"
-    integrity_error = psycopg.IntegrityError
-
     def __init__(self, database_url: str):
         self._database_url = database_url
 
@@ -54,19 +52,22 @@ class PostgresStore:
                       event["run_id"], event["type"], Jsonb(event)) for event in detail["events"]],
                 )
 
-    def list_experiments(self) -> list[dict]:
+    def list_experiments(self, *, limit: int | None = None) -> list[dict]:
+        query = "SELECT summary FROM experiments ORDER BY created_at DESC, id DESC"
+        if limit is not None:
+            query += " LIMIT %s"
         with self.connection() as connection:
-            return [row["summary"] for row in connection.execute(
-                "SELECT summary FROM experiments ORDER BY created_at DESC, id DESC")]
+            return [row["summary"] for row in connection.execute(query, (limit,) if limit is not None else ())]
 
-    def get(self, experiment_id: str) -> dict | None:
+    def get(self, experiment_id: str, *, include_events: bool = True) -> dict | None:
         with self.connection() as connection:
             row = connection.execute("SELECT payload FROM experiments WHERE id=%s", (experiment_id,)).fetchone()
             if row is None:
                 return None
             result = row["payload"]
-            result["events"] = [event["payload"] for event in connection.execute(
-                "SELECT payload FROM events WHERE experiment_id=%s ORDER BY sequence", (experiment_id,))]
+            if include_events:
+                result["events"] = [event["payload"] for event in connection.execute(
+                    "SELECT payload FROM events WHERE experiment_id=%s ORDER BY sequence", (experiment_id,))]
             return result
 
     def filter_events(self, experiment_id: str, *, run_id: str | None, event_type: str | None,

@@ -12,7 +12,36 @@ The results below supersede the original local-only hosting assumptions.
 - TypeScript and production frontend build: passed.
 - Dependency audits: no reported npm vulnerabilities; no reported Python
   vulnerabilities across 25 runtime packages.
-- Hosted CI, Neon integration, and deployment smoke tests: pending verification.
+- GitHub CI [run 38280754812](https://github.com/kdeng4/parallax-lab/actions/runs/38280754812):
+  all three jobs passed for commit `973ae58c331534b3a86c57d53139866a80476635`.
+  Backend: 109 passed, 93.26% branch-inclusive coverage; PostgreSQL 17 integration
+  tests included. Frontend/proxy/browser checks and both container builds passed.
+- Protected Vercel preview: PostgreSQL health, rejected cross-origin writes,
+  invalid input, a 1440-bar experiment, independent reload, filtered events, and
+  exact JSON export all passed. Export: 5,683,118 bytes, streamed without
+  Content-Length, with no-store and attachment headers.
+- Neon SQL readback: the preview experiment contains 5,999 events. Production
+  contains only its baseline example; preview test records did not reach it.
+  The runtime role has SELECT/INSERT, no UPDATE/DELETE, and no superuser,
+  role-creation, database-creation, or row-security-bypass privileges.
+- Production health and persisted listing passed. Custom domain
+  `https://parallax.pdeng.pp.ua` returns the same PostgreSQL health response
+  with authorized access. Anonymous API access redirects to Vercel sign-in.
+- Cloudflare CNAME and Vercel domain checks: verified, no DNS conflicts,
+  `misconfigured: false`. Vercel Authentication is enabled for all deployments.
+- A fresh preview and production deployment both built successfully from the
+  exact audited GitHub main commit. Production deployment:
+  `dpl_2EfyWxdjaJjGEm8EHzr5sSt69spM`; it retained the baseline created by the
+  earlier deployment, confirming storage survives a release.
+- Automatic Git deployments are not connected. Vercel can list the repository
+  and build from it, but both project-link attempts report that the GitHub
+  integration must be installed. Finish the connection in the project's Git
+  settings; do not assume push-to-deploy works until a push is observed.
+- Hosted browser automation reached Vercel sign-in, so it is not counted as a
+  successful hosted UI check. The initial automation was blocked by automatic
+  review over third-party telemetry; a retry with external requests blocked
+  remained at sign-in. Local and GitHub CI browser suites passed. Protected
+  hosted HTTP workflows were verified separately, as listed above.
 
 ## Original milestone 1 validation (historical)
 

@@ -22,6 +22,7 @@ Do not disable project protection while this remains a single-user workspace.
 | Git repository | `kdeng4/parallax-lab` |
 | Production branch | `main` |
 | Root directory | repository root |
+| Framework preset | Services |
 | Build and install commands | defined per service in `vercel.json` |
 | Node.js | 24.x |
 | Function region | iad1, close to Neon aws-us-east-1 |
@@ -74,7 +75,28 @@ Check that anonymous access cannot read or create experiments, and that no
 public rewrite exposes the API service. The large export is streamed through
 both FastAPI and Next.js so it does not hit the buffered response-size limit.
 
-Git integration deploys main to production and other branches to preview.
+Once connected, Git integration deploys main to production and other branches to preview.
 Database migrations remain an explicit operator action, not a side effect of
 every frontend build. Verify CI before merging changes; no branch-protection
 policy is assumed to exist.
+
+
+## Provisioned deployment — 2026-10-12
+
+- Application: https://parallax.pdeng.pp.ua (Vercel sign-in required).
+- Vercel: `patrick-db62/parallax-lab`, project `prj_WfMeBpTlMJ13F7my4nMJVaAHd8aP`.
+- Neon: project `young-firefly-90966004`, PostgreSQL 17 in aws-us-east-1.
+  Production branch: `br-delicate-fire-b8xk1lye`; preview branch:
+  `br-super-wave-b8rx0ons`. Database: `parallax`; application role:
+  `parallax_runtime`. An isolated `audit-2026-10-12` branch retains migration checks.
+- Cloudflare: DNS-only `parallax.pdeng.pp.ua` CNAME to
+  `e67426bd5849fbc4.vercel-dns-017.com`, TTL 300.
+- Each Vercel environment has its own sensitive database URL and API token.
+  Database-owner credentials are not deployed.
+- Preview and production builds from audited GitHub main commit `973ae58c`
+  succeeded through the Vercel API. The persistent repository link still fails
+  with Vercel's GitHub-integration installation error. Automatic Git deployments
+  require completing the repository connection in
+  https://vercel.com/patrick-db62/parallax-lab/settings/git.
+
+See [validation.md](validation.md) for observed checks and limitations.

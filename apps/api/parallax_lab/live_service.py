@@ -100,15 +100,22 @@ class LiveService:
         benchmark = new_book(0, start_date=start_date)
         benchmark['holdings'] = {'SPY': '1'}
         initial = snapshot('initial_reference', now, quotes=quotes)
+        indices = {}
+        for symbol in request.symbols:
+            book = new_book(0, start_date=start_date)
+            book['holdings'] = {symbol: '1'}
+            indices[symbol] = {'book': book, 'initial_value': quotes[symbol]['price']}
         study = {'id': str(uuid4()), 'name': request.name, 'status': 'active', 'created_at': now.isoformat(),
                  'started_at': now.isoformat(), 'last_tick_at': None, 'last_error': None,
                  'config': request.model_dump(), 'accounts': accounts,
                  'strategies': {key: strategies[key].model_dump() for key in request.strategy_ids},
                  'benchmark': {'book': benchmark, 'initial_value': quotes['SPY']['price'], 'return_pct': 0.0},
+                 'indices': indices,
                  'history': [], 'round': None, 'lease': None, 'lease_until': 0,
                  'metadata': {'mode': 'ongoing_paper_study', 'data_source': 'tiingo', 'fee_bps': 1, 'slippage_bps': 2,
                               'objective': 'Maximise ending paper equity, net of trading costs, within strategy limits.',
                               'decision_frequency': 'One shared decision corpus per weekday window; no backdated execution.',
+                              'history_basis': 'Since-start buy-and-hold total-return indices; splits and dividend receivables included, no reinvestment.',
                               'benchmark_basis': 'SPY buy-and-hold including verified splits and dividend receivables, before costs.',
                               'public_performance_approved': os.getenv('PARALLAX_PUBLIC_PERFORMANCE_APPROVED') == '1'}}
         self.db.create(study, initial)
@@ -237,10 +244,16 @@ class LiveService:
         round_ = study['round']
         if round_['stage'] == 'preparing':
             source = self.feeds.window_snapshot(study['config']['symbols'], study['started_at'][:10])
+            now = self.now()
+            total_return_indices = {}
+            for symbol, index in study['indices'].items():
+                apply_actions(index['book'], source['actions'], now.astimezone(NYSE).date().isoformat())
+                total_return_indices[symbol] = float(equity(index['book'], source['quotes']) / decimal(index['initial_value']) * 100)
             shared = snapshot('shared_window_input', instant(source['captured_at']),
                               **{key: source[key] for key in ('quotes', 'news', 'events', 'news_sources', 'actions')},
-                              history=study['history'][-60:])
-            now, changes = self.now(), []
+                              history=study['history'][-60:], total_return_indices=total_return_indices,
+                              history_basis=study['metadata']['history_basis'])
+            changes = []
             # Do not mutate a held portfolio until all selected data is verified.
             for account in study['accounts']:
                 applied = apply_actions(account['book'], shared['actions'], now.astimezone(NYSE).date().isoformat())
@@ -253,7 +266,8 @@ class LiveService:
             apply_actions(study['benchmark']['book'], shared['actions'], now.astimezone(NYSE).date().isoformat())
             round_.update(stage='collecting', snapshot=shared, snapshot_id=shared['id'], snapshot_hash=shared['hash'],
                           decisions={account['id']: {'status': 'pending'} for account in study['accounts'] if account['status'] == 'active'})
-            study['history'] = [*study['history'][-59:], {'day': round_['day'], 'quotes': shared['quotes']}]
+            study['history'] = [*study['history'][-59:], {'day': round_['day'], 'quotes': shared['quotes'],
+                                                       'total_return_indices': total_return_indices}]
             study['last_error'] = None
             if not self._save(study, snapshots=[shared], events=[*changes, event(now, 'shared_input',
                     'All participants receive the same verified prices, news and event corpus', shared_snapshot_id=shared['id'],

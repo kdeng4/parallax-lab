@@ -33,6 +33,7 @@ def quote(symbol='aapl', *, as_of=NOW, price=100):
     [quote(price=0), quote('spy')], [quote(price=True), quote('spy')],
     [quote(price=float('inf')), quote('spy')], [quote(as_of=NOW + timedelta(seconds=1)), quote('spy')],
     [quote(as_of=NOW - timedelta(seconds=901)), quote('spy')],
+    [quote(as_of=NOW.replace(hour=13, minute=29)), quote('spy')],
     [{**quote(), 'timestamp': '2026-10-12T14:00:00'}, quote('spy')],
 ])
 def test_reference_quotes_require_all_tickers_finite_prices_explicit_and_fresh_timestamps(factory, payload):

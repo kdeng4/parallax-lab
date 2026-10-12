@@ -8,6 +8,7 @@ from uuid import uuid4
 from .context_feeds import ContextFeeds
 from .market_feeds import FeedError, finite
 from .schemas import normalize_ticker
+from .exchange_sessions import NYSE, session_bounds
 
 TIINGO_LIVE_LIMITS = ((60, 5), (3600, 35), (86_400, 120))
 
@@ -52,6 +53,9 @@ class LiveFeeds:
                 price = finite(row['tngoLast'], positive=True)
                 if as_of > now or (now - as_of).total_seconds() > (345_600 if allow_closed else 900):
                     raise ValueError("Future or stale reference quote")
+                bounds = session_bounds(now.astimezone(NYSE).date())
+                if not allow_closed and (not bounds or not bounds[0] <= as_of < bounds[1]):
+                    raise ValueError("A reference quote from the current regular session is required")
                 quotes[symbol] = {'price': price, 'as_of': as_of.isoformat(), 'source': 'Tiingo IEX reference price'}
             if set(quotes) != set(wanted):
                 raise ValueError("All selected tickers and SPY need reference quotes")
@@ -132,7 +136,7 @@ class LiveFeeds:
                 if entry.get('error') or 'data' not in entry:
                     raise FeedError('corporate_actions_unavailable')
                 actions.extend(entry['data'])
-        return sorted(actions, key=lambda item: (item['date'], item['kind'], item['id']))
+        return sorted(actions, key=lambda item: (item['date'], 0 if item['kind'] == 'split' else 1, item['id']))
 
     def window_snapshot(self, symbols, since):
         # Complete cached corporate-action lookups first. A quota-limited prepare

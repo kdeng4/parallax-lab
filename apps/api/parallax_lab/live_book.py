@@ -28,7 +28,7 @@ def equity(book, quotes):
 def apply_actions(book, actions, today):
     """Credit only shares held before ex-date; unsettled dividends are not cash."""
     changed = []
-    for action in actions:
+    for action in sorted(actions, key=lambda item: (item['date'], 0 if item['kind'] == 'split' else 1, item['id'])):
         if action['date'] <= book['start_date']:
             continue
         action_id = action['id']

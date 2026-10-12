@@ -139,7 +139,7 @@ def test_corporate_actions_no_double_credit_or_same_day_entitlement():
     book['holdings'] = {'AAPL': '10'}
     split = {'id': 's', 'date': '2026-10-13', 'symbol': 'AAPL', 'kind': 'split', 'factor': 2}
     dividend = {'id': 'd', 'date': '2026-10-13', 'symbol': 'AAPL', 'kind': 'dividend', 'amount': 1, 'payment_date': None}
-    assert len(apply_actions(book, [split, dividend], '2026-10-13')) == 2
+    assert len(apply_actions(book, [dividend, split], '2026-10-13')) == 2
     assert book['holdings']['AAPL'] == '20'
     assert decimal(book['cash']) == 0
     assert equity(book, {'AAPL': {'price': 50}}) == 1020
@@ -457,11 +457,32 @@ def test_price_only_controls_have_observed_history_warmup(live):
     assert not local_decision('momentum', inputs).targets
     assert not local_decision('mean-reversion', inputs).targets
     lookback = inputs['strategy']['config']['lookback']
-    inputs['snapshot']['history'] = [{'quotes': {symbol: {'price': 50} for symbol in inputs['symbols']}} for _ in range(lookback)]
+    inputs['snapshot']['history'] = [{'total_return_indices': {symbol: 50 for symbol in inputs['symbols']}} for _ in range(lookback)]
     assert local_decision('momentum', inputs).targets
     assert not local_decision('mean-reversion', inputs).targets
-    inputs['snapshot']['history'] = [{'quotes': {symbol: {'price': 200} for symbol in inputs['symbols']}} for _ in range(lookback)]
+    inputs['snapshot']['history'] = [{'total_return_indices': {symbol: 200 for symbol in inputs['symbols']}} for _ in range(lookback)]
     assert local_decision('mean-reversion', inputs).targets
+
+
+def test_splits_and_ex_dividend_price_changes_do_not_create_false_return_signals(live, monkeypatch):
+    study = live.create(request())
+    live.tick()
+    source = live.feeds.window_snapshot
+    live.test_clock.advance(86_400)
+    def split_day(symbols, since):
+        value = source(symbols, since)
+        value['quotes']['AAPL']['price'] = 49
+        value['actions'] = [
+            {'id': 'd', 'symbol': 'AAPL', 'kind': 'dividend', 'date': '2026-10-13', 'amount': 1, 'payment_date': None},
+            {'id': 's', 'symbol': 'AAPL', 'kind': 'split', 'date': '2026-10-13', 'factor': 2},
+        ]
+        return value
+    monkeypatch.setattr(live.feeds, 'window_snapshot', split_day)
+    live.tick()
+    shared = live.db.get(study['id'])['round']['snapshot']
+    assert shared['quotes']['AAPL']['price'] == 49
+    assert shared['total_return_indices']['AAPL'] == 100
+    assert shared['history'][0]['total_return_indices']['AAPL'] == 100
 
 
 def test_structured_cloud_adapter_rejects_invalid_output():

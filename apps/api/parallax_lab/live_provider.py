@@ -45,8 +45,8 @@ def local_decision(model_id, inputs):
     strategy = inputs['strategy']['config']
     scores = {}
     for symbol in inputs['symbols']:
-        prices = [day['quotes'][symbol]['price'] for day in inputs['snapshot']['history']]
-        prices.append(inputs['snapshot']['quotes'][symbol]['price'])
+        prices = [day['total_return_indices'][symbol] for day in inputs['snapshot']['history']]
+        prices.append(inputs['snapshot']['total_return_indices'][symbol])
         tail = prices[-strategy['lookback']:]
         if model_id == 'buy-and-hold':
             scores[symbol] = 1.0

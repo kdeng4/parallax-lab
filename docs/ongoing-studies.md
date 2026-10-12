@@ -21,8 +21,11 @@ news, announced events, corporate actions and prior observed study price history
 Every pair receives that exact corpus, its own paper account and its frozen
 strategy. The private interface exposes the common snapshot and each validated
 decision, including source timestamps, weights, confidence and safe token usage.
-Price-only local controls use their observed-history warm-up and do not interpret
-news. OpenAI participants receive the common articles and events.
+Price-only local controls use since-start total-return indices and their
+observed-history warm-up; they do not interpret news. The indices include verified
+splits and dividend receivables, preventing corporate-action price changes from
+creating false momentum/mean-reversion signals. Splits apply before same-date
+per-share distributions, and dividend cash is not reinvested in these indices. OpenAI participants receive the common articles and events.
 
 Agents choose portfolio weights among the fixed ticker universe and cash, plus
 an execution delay within the current window. They can choose no position. The

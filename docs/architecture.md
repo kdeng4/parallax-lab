@@ -18,7 +18,7 @@ flowchart LR
     DATA --> AUDIT[Sequenced audit events]
     SIG --> AUDIT
     FILL --> AUDIT
-    METRICS --> DB[(SQLite experiments)]
+    METRICS --> DB[(SQLite local / PostgreSQL hosted)]
     AUDIT --> DB
     DB --> API
 ```
@@ -38,7 +38,7 @@ signal cannot create a trade. Slippage and fees are explicit costs, with no
 borrowing or shorting. These are research execution assumptions, not a model of
 exchange order queues, market impact, or a particular broker's fill guarantees.
 
-## Local storage and concurrency
+## Storage and concurrency
 
 The API stores each completed experiment and its audit record together. Replay
 is bounded and synchronous for local development. A single-user process is the
@@ -47,9 +47,17 @@ SQLite file; use a transactional database and persistent task scheduler first.
 
 The API is reachable directly on loopback during local development. Browsers
 call the Next.js same-origin proxy; credentials and provider requests belong on
-the API server. The default application has no user authentication and should
-remain on loopback or a private development network. The container configuration
-binds published ports to loopback by default.
+the API server. Local development has no user authentication and remains on loopback. The
+container configuration binds published ports to loopback by default. Hosted
+deployments use Vercel Authentication on every frontend URL, a private FastAPI
+service with a server-only bearer token, and a runtime same-origin proxy. This
+is a private single-user workspace, not a multi-tenant authentication model.
+
+Hosted storage uses Neon PostgreSQL with independent production and preview
+branches. Versioned migrations run separately from the restricted application
+role. Experiment and event inserts commit atomically, and database triggers
+reject updates or deletes of research records. Each request uses a short
+transaction through a pooled connection endpoint. See [deployment.md](deployment.md).
 
 ## Evolving to the target architecture
 

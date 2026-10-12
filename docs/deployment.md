@@ -1,37 +1,80 @@
-# Parallax Lab · Vercel frontend deployment
+# Parallax Lab deployment
 
-The Next.js frontend is in `apps/web`. Its requests to `/api/v1/*` are proxied
-to the FastAPI service through a Next.js rewrite. A Vercel deployment needs a
-reachable HTTPS API before the research workbench can load data.
+The hosted application uses one Vercel project with two Services (currently a
+Vercel beta): Next.js in `apps/web` and FastAPI in `apps/api`. Neon provides
+PostgreSQL. Cloudflare manages the custom domain's DNS.
 
-Configure the Vercel project with:
+## Application boundary
 
-| Setting | Value |
+The repository-root `vercel.json` exposes only the `web` service. The Python
+service has no public route. A binding injects `BACKEND_INTERNAL_URL` into web
+functions at runtime; never set this variable manually. Browser calls to
+`/api/v1/*` go through a Next.js route handler, which attaches a server-only
+bearer token, forwards only supported paths, and streams responses.
+
+**Enable Vercel Authentication for All Deployments before deploying.** This
+must cover production domains, preview URLs, and immutable deployment URLs.
+API service authentication alone does not authenticate a visitor to the frontend.
+Do not disable project protection while this remains a single-user workspace.
+
+| Project setting | Value |
 | --- | --- |
-| Root Directory | `apps/web` |
-| Framework | Next.js |
-| Install command | `npm ci` |
-| Build command | `npm run build` |
-| Environment variable | `API_BASE_URL=https://<protected-api-origin>` |
+| Git repository | `kdeng4/parallax-lab` |
+| Production branch | `main` |
+| Root directory | repository root |
+| Build and install commands | defined per service in `vercel.json` |
+| Node.js | 24.x |
+| Function region | iad1, close to Neon aws-us-east-1 |
+| Vercel Authentication | All Deployments (`deploymentType: all`) |
 
-Set `API_BASE_URL` for every Vercel environment being deployed. Supply only
-the origin: no `/api/v1` path, credentials, or trailing path. The rewrite is
-compiled during the build, so rebuild after changing this value. Vercel builds
-fail if the variable is missing, non-HTTPS, or points to loopback.
+## Secrets and environments
 
-Before deploying, verify that the API is available at
-`https://<protected-api-origin>/api/v1/health` and that its authentication
-protects experiment creation, records, and exports. The current FastAPI API is
-single-user and has no authentication; it must not be exposed as a public API.
-The local SQLite database is not suitable for an ephemeral hosted API.
+Set encrypted/sensitive project environment variables. Never use `NEXT_PUBLIC_`
+for these values, commit them, or print them in build/test logs.
 
-Neon can provide hosted PostgreSQL for a future API deployment; it is not
-needed for the frontend build. The current storage layer accepts SQLite URLs
-only, so adding a Neon connection string by itself does not connect or deploy
-the API. PostgreSQL storage, its integration tests, API hosting, and access
-control are separate prerequisites for a full hosted workbench.
+| Variable | Purpose |
+| --- | --- |
+| `PARALLAX_DATABASE_URL` | Pooled PostgreSQL URL for a runtime role with SELECT/INSERT privileges only |
+| `PARALLAX_API_TOKEN` | Random bearer token of at least 32 characters, shared by the two services |
+| `PARALLAX_SEED_DEMO` | `1` seeds one deterministic baseline example; `0` disables seeding |
 
-After deployment, check the Vercel URL and its `/api/v1/health` proxy. Open the
-workbench, create a paper experiment, reload, and confirm that the experiment
-and audit trail persist. A successful frontend build alone does not establish
-that these workflows are working.
+Use different database branches and tokens for production and preview. A hosted
+API fails startup when its PostgreSQL URL or token is missing. Local development
+still supports SQLite and `API_BASE_URL=http://127.0.0.1:8000`; set the same
+`PARALLAX_API_TOKEN` in both processes when testing authenticated local access.
+
+## Database migration
+
+Schema changes live in `apps/api/parallax_lab/migrations`. Test them on an
+isolated branch first. Apply using a **direct** owner connection, before starting
+the app; the runtime role should not own tables or have schema-change rights.
+
+```bash
+cd apps/api
+# Inject the direct owner connection as PARALLAX_DATABASE_URL_UNPOOLED.
+uv run --frozen python -m parallax_lab.migrate
+```
+
+The migration is transactional, serialized by an advisory lock, and idempotent.
+The API only checks the schema version at startup. Experiments and their events
+commit in one transaction; PostgreSQL triggers reject updates/deletes, and the
+runtime role additionally has no such grants.
+
+## DNS and release verification
+
+Add the intended subdomain to the Vercel project, use the exact CNAME target
+returned by Vercel, and create a DNS-only CNAME in Cloudflare. Keep existing
+records untouched. Vercel terminates HTTPS and enforces project authentication.
+R2 and Cloudflare Access are not required for this architecture.
+
+Before release, run CI (including real PostgreSQL, frontend proxy tests, browser
+workflows, and container builds). Then verify the protected preview: health,
+creation, reload/persistence, filtered audit events, and the 1440-bar export.
+Check that anonymous access cannot read or create experiments, and that no
+public rewrite exposes the API service. The large export is streamed through
+both FastAPI and Next.js so it does not hit the buffered response-size limit.
+
+Git integration deploys main to production and other branches to preview.
+Database migrations remain an explicit operator action, not a side effect of
+every frontend build. Verify CI before merging changes; no branch-protection
+policy is assumed to exist.

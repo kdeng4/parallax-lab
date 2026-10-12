@@ -1,4 +1,20 @@
-# Parallax Lab · Milestone 1 validation
+# Parallax Lab · Validation history
+
+## Deployment audit — 2026-10-12
+
+The results below supersede the original local-only hosting assumptions.
+
+- Local backend: 105 passed; 4 PostgreSQL integration tests deferred to CI
+  because this workspace cannot resolve Neon database hosts.
+- Server-side proxy tests: 4 passed, including credentials, rejected writes,
+  missing hosted configuration, and a streamed response over 5 MB.
+- Browser integration: all 10 workflows passed after fixing mobile overflow.
+- TypeScript and production frontend build: passed.
+- Dependency audits: no reported npm vulnerabilities; no reported Python
+  vulnerabilities across 25 runtime packages.
+- Hosted CI, Neon integration, and deployment smoke tests: pending verification.
+
+## Original milestone 1 validation (historical)
 
 Validated in the cloud development environment on 2026-10-12.
 

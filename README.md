@@ -27,7 +27,7 @@ frontend to a hosted API.
 - A responsive Next.js UI and a validated FastAPI HTTP API.
 
 No live broker orders are implemented. Live feeds, cloud-model experiment
-execution, user authentication, NATS workers, MLflow and Kubernetes are later
+execution, multi-user accounts, NATS workers, MLflow and Kubernetes are later
 milestones. Provider adapters are infrastructure for future integration; demo
 results are never attributed to cloud models.
 
@@ -63,8 +63,13 @@ by Git. Existing local databases are retained when the new database is absent.
 Back up the file with SQLite's backup mechanism when retaining research work. Set
 `PARALLAX_DATABASE_URL` before starting the API to use another local database.
 Set `PARALLAX_SEED_DEMO=0` to skip the initial example. The frontend's
-`API_BASE_URL` defaults to the API's loopback address. Next.js embeds rewrite
-destinations at build time; set the value **before** a production build.
+`API_BASE_URL` defaults to the API's loopback address for local development.
+The server-side API proxy reads this at runtime. Hosted deployments use a private
+Vercel service binding instead; see [deployment](docs/deployment.md).
+
+Hosted storage supports PostgreSQL on Neon, with versioned migrations and
+atomic, immutable experiment records. Vercel Authentication protects all hosted
+URLs, and a server-only token protects the private Python API.
 
 No API keys are required for the local research workflow. Never expose provider
 keys via `NEXT_PUBLIC_*`. The `.env.example` documents optional configuration;
@@ -77,6 +82,11 @@ loading the root `.env`.
 cd apps/api
 uv run --frozen --group dev pytest --cov=parallax_lab --cov-branch --cov-report=term-missing --cov-fail-under=90
 ```
+
+For the full coverage gate, set `PARALLAX_TEST_DATABASE_URL` to a disposable
+PostgreSQL database. CI supplies its own PostgreSQL service. Without that
+variable, PostgreSQL integration tests skip; run `uv run --frozen pytest` for
+local SQLite checks only.
 
 ```bash
 cd apps/web

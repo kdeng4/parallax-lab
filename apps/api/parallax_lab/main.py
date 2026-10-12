@@ -1,22 +1,36 @@
 import json
 import os
-import sqlite3
+import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .engine import MODELS, run_experiment
 from .schemas import SYMBOLS, ExperimentInput
-from .storage import Store
+from .storage import Store, open_store
 from .strategy import load_strategies
 
 DEMO_ID = "d93865f4-352f-5a14-b80d-e0453b018540"
+
+
+def stream_json(value: dict, *, status_code: int = 200, headers: dict | None = None, indent=None):
+    def chunks():
+        parts, length = [], 0
+        for part in json.JSONEncoder(ensure_ascii=False, allow_nan=False, indent=indent).iterencode(value):
+            parts.append(part)
+            length += len(part)
+            if length >= 65_536:
+                yield "".join(parts)
+                parts, length = [], 0
+        if parts:
+            yield "".join(parts)
+    return StreamingResponse(chunks(), status_code=status_code, media_type="application/json", headers=headers)
 
 
 def default_database_url() -> str:
@@ -28,10 +42,16 @@ def default_database_url() -> str:
 
 
 def create_app(database_url: str | None = None, seed_demo: bool | None = None) -> FastAPI:
+    api_token = os.getenv("PARALLAX_API_TOKEN", "")
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        store = Store(database_url or os.getenv("PARALLAX_DATABASE_URL") or
-                      os.getenv("PATRICK_DATABASE_URL") or default_database_url())
+        url = (database_url or os.getenv("PARALLAX_DATABASE_URL") or
+               os.getenv("PATRICK_DATABASE_URL") or default_database_url())
+        if os.getenv("VERCEL") == "1":
+            if len(api_token) < 32 or not url.startswith(("postgresql://", "postgres://")):
+                raise RuntimeError("Hosted API requires PostgreSQL and a PARALLAX_API_TOKEN of at least 32 characters")
+        store = open_store(url)
         store.initialize()
         app.state.store = store
         seed_setting = os.getenv("PARALLAX_SEED_DEMO")
@@ -41,7 +61,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
         if should_seed and not store.has(DEMO_ID):
             try:
                 store.save(run_experiment(ExperimentInput(name="Opening bell · baseline study"), DEMO_ID))
-            except sqlite3.IntegrityError:
+            except store.integrity_error:
                 # Concurrent worker startup may have committed this exact seed first.
                 if not store.has(DEMO_ID):
                     raise
@@ -49,6 +69,18 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
 
     app = FastAPI(title="Parallax Lab · paper-trading research", version="0.1.0", lifespan=lifespan,
                   description="Single-user research API. Synthetic data and local baselines; no live orders.")
+
+    @app.middleware("http")
+    async def protect_api(request: Request, call_next):
+        if api_token and not secrets.compare_digest(
+            request.headers.get("authorization", "").encode(), f"Bearer {api_token}".encode()
+        ):
+            return JSONResponse({"detail": "Authentication required"}, status_code=401,
+                                headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store"})
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request, error: RequestValidationError):
@@ -71,7 +103,7 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
     def health():
         with store().connection() as connection:
             connection.execute("SELECT 1").fetchone()
-        return {"status": "ok", "mode": "paper", "storage": "sqlite"}
+        return {"status": "ok", "mode": "paper", "storage": store().dialect}
 
     @app.get("/api/v1/catalog")
     def catalog():
@@ -87,11 +119,11 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
     def create_experiment(request: ExperimentInput):
         detail = run_experiment(request)
         store().save(detail)
-        return detail
+        return stream_json(detail, status_code=201)
 
     @app.get("/api/v1/experiments/{experiment_id}")
     def experiment(experiment_id: UUID):
-        return get_or_404(experiment_id)
+        return stream_json(get_or_404(experiment_id))
 
     @app.get("/api/v1/experiments/{experiment_id}/events")
     def events(experiment_id: UUID, run_id: UUID | None = None,
@@ -114,8 +146,8 @@ def create_app(database_url: str | None = None, seed_demo: bool | None = None) -
     @app.get("/api/v1/experiments/{experiment_id}/export")
     def export(experiment_id: UUID):
         detail = get_or_404(experiment_id)
-        return Response(json.dumps(detail, ensure_ascii=False, indent=2, allow_nan=False), media_type="application/json",
-                        headers={"Content-Disposition": f'attachment; filename="parallax-lab-{experiment_id}.json"'})
+        return stream_json(detail, indent=2,
+                           headers={"Content-Disposition": f'attachment; filename="parallax-lab-{experiment_id}.json"'})
 
     return app
 

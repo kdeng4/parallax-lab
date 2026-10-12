@@ -10,6 +10,19 @@ concurrency:
 jobs:
   engine:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres-test-only
+          POSTGRES_DB: parallax_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PARALLAX_TEST_DATABASE_URL: postgresql://postgres:postgres-test-only@localhost:5432/parallax_test
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Check release language
@@ -43,7 +56,8 @@ jobs:
         working-directory: apps/web
         run: |
           npm run typecheck
-          VERCEL=1 API_BASE_URL=https://api.example.com npm run build
+          npm run test:proxy
+          VERCEL=1 npm run build
       - name: Install Chromium
         working-directory: apps/web
         run: npx playwright install --with-deps chromium

@@ -15,6 +15,9 @@ def epoch_microseconds(value: str) -> int:
 
 
 class Store:
+    dialect = "sqlite"
+    integrity_error = sqlite3.IntegrityError
+
     def __init__(self, database_url: str):
         prefix = "sqlite:///"
         if not database_url.startswith(prefix):
@@ -108,3 +111,10 @@ class Store:
             count = connection.execute(f"SELECT count(*) FROM events WHERE {where}", values).fetchone()[0]
             rows = connection.execute(f"SELECT payload FROM events WHERE {where} ORDER BY sequence LIMIT ? OFFSET ?", [*values, limit, offset])
             return {"events": [json.loads(row["payload"]) for row in rows], "total": count, "limit": limit, "offset": offset}
+
+
+def open_store(database_url: str):
+    if database_url.startswith(("postgresql://", "postgres://")):
+        from .postgres import PostgresStore
+        return PostgresStore(database_url)
+    return Store(database_url)

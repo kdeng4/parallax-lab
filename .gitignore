@@ -8,6 +8,9 @@ out/
 .venv/
 .data/
 .pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
 .ruff_cache/
 __pycache__/
 *.py[cod]

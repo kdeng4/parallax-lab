@@ -72,7 +72,7 @@ loading the root `.env`.
 
 ```bash
 cd apps/api
-uv run --frozen --group dev pytest
+uv run --frozen --group dev pytest --cov=patrick --cov-branch --cov-report=term-missing --cov-fail-under=90
 ```
 
 ```bash
@@ -88,6 +88,8 @@ processes share a build-directory lock. The tests start isolated services and a
 temporary database. To use an
 existing Chromium installation, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 Validation covers actual account behavior and both comparison workflows.
+The same backend coverage gate runs in CI. See [testing](docs/testing.md) for
+the test boundaries and the acceptance gates for upcoming integrations.
 
 ## Containers
 

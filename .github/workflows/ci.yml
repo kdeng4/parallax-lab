@@ -18,10 +18,10 @@ jobs:
           python-version: '3.12'
       - name: Install locked backend dependencies
         working-directory: apps/api
-        run: uv sync --frozen --group dev
-      - name: Validate accounting, causality, adapters and HTTP API
+        run: uv sync --locked --group dev
+      - name: Validate accounting, causality, persistence and HTTP API with coverage
         working-directory: apps/api
-        run: uv run --frozen pytest
+        run: uv run --frozen --group dev pytest --cov=patrick --cov-branch --cov-report=term-missing --cov-fail-under=90
   web:
     runs-on: ubuntu-latest
     steps:

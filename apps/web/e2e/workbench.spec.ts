@@ -66,6 +66,36 @@ test('optional experiment name works and dialog supports keyboard dismissal', as
   await expect(page.getByRole('dialog')).not.toBeVisible();
 });
 
+test('invalid participant selection stays local and can be corrected', async ({ page }) => {
+  await openWorkbench(page);
+  await page.getByRole('button', { name: /new experiment/i }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('input[name="comparison"]').first().check();
+  const models = dialog.locator('input[name="models"]');
+  let submissions = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/experiments') submissions += 1;
+  });
+
+  await models.nth(1).uncheck();
+  await models.nth(2).uncheck();
+  await dialog.getByRole('button', { name: /Run experiment/i }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Select at least two models to compare.');
+  expect(submissions).toBe(0);
+  await expect(dialog).toBeVisible();
+
+  await models.nth(1).check();
+  const created = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/experiments');
+  await dialog.getByRole('button', { name: /Run experiment/i }).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  const detail = await response.json();
+  expect(detail.runs).toHaveLength(2);
+  expect(submissions).toBe(1);
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByLabel('Selected experiment')).toHaveValue(detail.id);
+});
+
 test('chart controls, account inspection, audit filtering and export use persisted data', async ({ page, request }) => {
   await page.goto('/');
   await expect(page.getByTestId('equity-chart')).toBeVisible();
@@ -101,6 +131,52 @@ test('chart controls, account inspection, audit filtering and export use persist
   await page.getByTestId('audit-events').locator('summary').first().click();
   await expect(page.getByTestId('audit-events').locator('details[open] pre')).toContainText('before');
   await expect(page.getByTestId('audit-events').locator('details[open] pre')).toContainText('after');
+});
+
+test('switching audit experiments clears filters and displays the selected record', async ({ page, request }) => {
+  const firstResponse = await request.post('/api/v1/experiments', { data: { name: 'Audit switch first', bars: 60, seed: 101 } });
+  const secondResponse = await request.post('/api/v1/experiments', { data: { name: 'Audit switch second', bars: 60, seed: 102 } });
+  expect(firstResponse.status()).toBe(201);
+  expect(secondResponse.status()).toBe(201);
+  const first = await firstResponse.json();
+  const second = await secondResponse.json();
+
+  await openWorkbench(page);
+  await page.getByRole('button', { name: 'Audit trail', exact: true }).click();
+  const experimentSelector = page.locator('#audit-experiment');
+  await expect(experimentSelector).toHaveValue(second.id);
+
+  await page.getByLabel('Event type', { exact: true }).selectOption('decision');
+  const filteredResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/v1/experiments/${second.id}/events` && url.searchParams.get('run_id') === second.runs[0].id;
+  });
+  await page.getByLabel('Participant', { exact: true }).selectOption(second.runs[0].id);
+  const filtered = await (await filteredResponse).json();
+  expect(filtered.total).toBeGreaterThan(0);
+  await expect(page.getByText(`${filtered.total} events`, { exact: true })).toBeVisible();
+
+  const selectedEvents = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/experiments/${first.id}/events`);
+  await experimentSelector.selectOption(first.id);
+  const response = await selectedEvents;
+  const url = new URL(response.url());
+  expect(url.searchParams.has('type')).toBe(false);
+  expect(url.searchParams.has('run_id')).toBe(false);
+  expect(url.searchParams.has('from_time')).toBe(false);
+  expect(url.searchParams.has('to_time')).toBe(false);
+  const unfiltered = await response.json();
+  expect(unfiltered.total).toBeGreaterThan(filtered.total);
+  await expect(page.getByLabel('Event type', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Participant', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Participant', { exact: true }).locator(`option[value="${second.runs[0].id}"]`)).toHaveCount(0);
+  await expect(page.getByText(`${unfiltered.total} events`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Export full record' })).toHaveAttribute('href', `/api/v1/experiments/${first.id}/export`);
+  const summaries = page.getByTestId('audit-events').locator('summary');
+  await expect(summaries).toHaveCount(20);
+  for (const [index, event] of unfiltered.events.slice(0, 4).entries()) {
+    await expect(summaries.nth(index)).toContainText(event.message);
+    await expect(summaries.nth(index)).toContainText(`#${event.sequence}`);
+  }
 });
 
 test('mobile layout stays within viewport and can create an experiment', async ({ page }) => {

@@ -1,0 +1,19 @@
+# Runtime and generated outputs
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+.venv/
+.data/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+coverage/
+test-results/
+playwright-report/
+.runtime/
+.DS_Store

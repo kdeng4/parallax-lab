@@ -1,0 +1,64 @@
+name: Validate Patrick
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: patrick-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.12.23'
+          python-version: '3.12'
+      - name: Install locked backend dependencies
+        working-directory: apps/api
+        run: uv sync --frozen --group dev
+      - name: Validate accounting, causality, adapters and HTTP API
+        working-directory: apps/api
+        run: uv run --frozen pytest
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.12.23'
+          python-version: '3.12'
+      - name: Install locked dependencies
+        run: bash scripts/setup.sh
+      - name: Type check and build production frontend
+        working-directory: apps/web
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Verify browser workflows against isolated API
+        working-directory: apps/web
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: browser-test-results
+          path: apps/web/test-results/
+          retention-days: 7
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Validate Compose and build images
+        run: |
+          docker compose config --quiet
+          docker compose build

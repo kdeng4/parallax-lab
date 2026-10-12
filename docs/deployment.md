@@ -94,16 +94,19 @@ policy is assumed to exist.
 - Neon: project `young-firefly-90966004`, PostgreSQL 17 in aws-us-east-1.
   Production branch: `br-delicate-fire-b8xk1lye`; preview branch:
   `br-super-wave-b8rx0ons`. Database: `parallax`; application role:
-  `parallax_runtime`. An isolated `audit-2026-10-12` branch retains migration checks.
+  `parallax_app_v2`. An isolated `audit-2026-10-12` branch retains migration checks.
 - Cloudflare: DNS-only `parallax.pdeng.pp.ua` CNAME to
   `e67426bd5849fbc4.vercel-dns-017.com`, TTL 300.
 - Each Vercel environment has its own sensitive database URL and API token.
   Database-owner credentials are not deployed.
-- Preview and production builds from audited GitHub main commit `973ae58c`
-  succeeded through the Vercel API. The persistent repository link still fails
-  with Vercel's GitHub-integration installation error. Automatic Git deployments
-  require completing the repository connection in
-  https://vercel.com/patrick-db62/parallax-lab/settings/git.
+- `kdeng4/parallax-lab` is now permanently connected in Vercel Git settings,
+  confirmed both in the dashboard and the provider's linked-project API.
+  Production branch: `main`. The initial connector installation error was
+  resolved by connecting the existing GitHub integration through the dashboard.
+- Editor authorization commit `6cafebf6` passed CI run `38285745642`:
+  112 backend tests with 93.38% branch-inclusive coverage, 18 proxy/auth tests,
+  11 browser workflows, and both container builds. The protected preview
+  reports healthy PostgreSQL and read-only access while editor login is pending.
 
 See [validation.md](validation.md) for observed checks and limitations.
 

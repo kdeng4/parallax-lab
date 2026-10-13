@@ -18,7 +18,8 @@ function authorized(request: Request, env: Env): boolean {
 }
 
 async function boundedJSON(response: Response): Promise<unknown> {
-  if (!response.ok || !response.body) throw new Error('Scheduler plan unavailable');
+  if (!response.ok) throw new Error(`plan_http_${response.status}`);
+  if (!response.body) throw new Error('plan_body_missing');
   const reader = response.body.getReader();
   const parts: Uint8Array[] = [];
   let size = 0;
@@ -32,14 +33,21 @@ async function boundedJSON(response: Response): Promise<unknown> {
   const body = new Uint8Array(size);
   let offset = 0;
   for (const part of parts) { body.set(part, offset); offset += part.length; }
-  return JSON.parse(new TextDecoder().decode(body));
+  try { return JSON.parse(new TextDecoder().decode(body)); }
+  catch { throw new Error('plan_invalid_json'); }
 }
 
 export async function refreshPlan(env: Env): Promise<Plan> {
   if (!env.SCHEDULER_TOKEN || env.SCHEDULER_TOKEN.length < 32) throw new Error('Scheduler is not configured');
-  const response = await fetch(new URL('/api/scheduler/plan', env.BACKEND_ORIGIN), {
-    headers: { Authorization: `Bearer ${env.SCHEDULER_TOKEN}` }, redirect: 'error', signal: AbortSignal.timeout(15_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/scheduler/plan', env.BACKEND_ORIGIN), {
+      headers: { Authorization: `Bearer ${env.SCHEDULER_TOKEN}` }, redirect: 'manual', signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    console.error('plan_fetch_failed', { type: error instanceof Error ? error.name : 'unknown' });
+    throw new Error('plan_request_failed');
+  }
   const value = await boundedJSON(response) as { studies?: unknown };
   if (!Array.isArray(value?.studies) || value.studies.length > 2) throw new Error('Invalid scheduler plan');
   const studies: Study[] = value.studies.map(item => {
@@ -58,7 +66,8 @@ export async function refreshPlan(env: Env): Promise<Plan> {
     return { id: item.id, windows };
   });
   const plan = { fetched_at: Date.now(), studies };
-  await env.PLAN.put('plan', JSON.stringify(plan));
+  try { await env.PLAN.put('plan', JSON.stringify(plan)); }
+  catch { throw new Error('plan_cache_write_failed'); }
   return plan;
 }
 
@@ -74,7 +83,11 @@ export default {
     try {
       const plan = await refreshPlan(env);
       return new Response(JSON.stringify({ synced: true, active_studies: plan.studies.length }), { headers });
-    } catch { return new Response(JSON.stringify({ synced: false }), { status: 503, headers }); }
+    } catch (error) {
+      const reason = error instanceof Error && /^plan_[a-z0-9_]+$/.test(error.message) ? error.message : 'plan_sync_failed';
+      console.error('scheduler_sync_failed', { reason });
+      return new Response(JSON.stringify({ synced: false, reason }), { status: 503, headers });
+    }
   },
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     let plan = await env.PLAN.get<Plan>('plan', 'json');
@@ -84,7 +97,7 @@ export default {
     if (!plan.studies.some(study => inWindow(study, new Date(controller.scheduledTime)))) return;
     const response = await fetch(new URL('/api/scheduler/tick', env.BACKEND_ORIGIN), {
       method: 'POST', headers: { Authorization: `Bearer ${env.SCHEDULER_TOKEN}`, 'Content-Type': 'application/json' },
-      body: '{}', redirect: 'error', signal: AbortSignal.timeout(110_000),
+      body: '{}', redirect: 'manual', signal: AbortSignal.timeout(110_000),
     });
     const ok = response.ok;
     await response.body?.cancel();

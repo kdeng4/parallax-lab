@@ -64,8 +64,8 @@ jobs:
         run: |
           npm ci
           npm run typecheck
-          npm test
           npm run build
+          npm test
       - name: Install Chromium
         working-directory: apps/web
         run: npx playwright install --with-deps chromium

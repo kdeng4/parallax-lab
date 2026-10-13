@@ -4,67 +4,86 @@ type SessionWindow = { start: number; end: number };
 type Study = { id: string; windows: SessionWindow[] };
 type Plan = { fetched_at: number; studies: Study[] };
 const headers = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' };
+const maxPlanBytes = 32_768;
 
-export function inWindow(study: Study, now: Date): boolean {
-  return study.windows.some(window => window.start <= now.getTime() && now.getTime() < window.end);
+function configured(env: Env): boolean {
+  return Boolean(env.SCHEDULER_TOKEN && env.SCHEDULER_TOKEN.length >= 32);
 }
 
-function authorized(request: Request, env: Env): boolean {
-  if (!env.SCHEDULER_TOKEN || env.SCHEDULER_TOKEN.length < 32) return false;
+export function inWindow(study: Study, now: Date): boolean {
+  const timestamp = now.getTime();
+  return study.windows.some(window => window.start <= timestamp && timestamp < window.end);
+}
+
+async function authorized(request: Request, env: Env): Promise<boolean> {
+  if (!configured(env)) return false;
   const encoder = new TextEncoder();
-  const expected = encoder.encode(`Bearer ${env.SCHEDULER_TOKEN}`);
-  const supplied = encoder.encode(request.headers.get('authorization') ?? '');
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  const [supplied, expected] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(request.headers.get('authorization') ?? '')),
+    crypto.subtle.digest('SHA-256', encoder.encode(`Bearer ${env.SCHEDULER_TOKEN}`)),
+  ]);
+  return timingSafeEqual(new Uint8Array(supplied), new Uint8Array(expected));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseWindow(value: unknown): SessionWindow {
+  if (!isRecord(value)) throw new Error('Invalid market session windows');
+  const { start, end } = value;
+  if (typeof start !== 'number' || typeof end !== 'number'
+    || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= end
+    || end - start > 10_800_000) throw new Error('Invalid market session windows');
+  return { start, end };
+}
+
+function parseStudy(value: unknown): Study {
+  if (!isRecord(value) || typeof value.id !== 'string' || !/^[0-9a-f-]{36}$/.test(value.id)
+      || !Array.isArray(value.windows) || value.windows.length > 2) throw new Error('Invalid study schedule');
+  // The backend applies the exchange calendar and timezone. Only UTC intervals
+  // are retained, keeping minute invocations below the Free CPU allowance.
+  return { id: value.id, windows: value.windows.map(parseWindow) };
+}
+
+function parseStudies(value: unknown): Study[] {
+  if (!isRecord(value) || !Array.isArray(value.studies) || value.studies.length > 2)
+    throw new Error('Invalid scheduler plan');
+  return value.studies.map(parseStudy);
 }
 
 async function boundedJSON(response: Response): Promise<unknown> {
   if (!response.ok) throw new Error(`plan_http_${response.status}`);
   if (!response.body) throw new Error('plan_body_missing');
   const reader = response.body.getReader();
-  const parts: Uint8Array[] = [];
+  const body = new Uint8Array(maxPlanBytes);
   let size = 0;
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
+    if (size + value.byteLength > body.byteLength) {
+      await reader.cancel();
+      throw new Error('Scheduler plan too large');
+    }
+    body.set(value, size);
     size += value.byteLength;
-    if (size > 32_768) { await reader.cancel(); throw new Error('Scheduler plan too large'); }
-    parts.push(value);
   }
-  const body = new Uint8Array(size);
-  let offset = 0;
-  for (const part of parts) { body.set(part, offset); offset += part.length; }
-  try { return JSON.parse(new TextDecoder().decode(body)); }
+  try { return JSON.parse(new TextDecoder().decode(body.subarray(0, size))); }
   catch { throw new Error('plan_invalid_json'); }
 }
 
 export async function refreshPlan(env: Env): Promise<Plan> {
-  if (!env.SCHEDULER_TOKEN || env.SCHEDULER_TOKEN.length < 32) throw new Error('Scheduler is not configured');
+  if (!configured(env)) throw new Error('Scheduler is not configured');
   let response: Response;
   try {
     response = await fetch(new URL('/api/scheduler/plan', env.BACKEND_ORIGIN), {
       headers: { Authorization: `Bearer ${env.SCHEDULER_TOKEN}` }, redirect: 'manual', signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    console.error('plan_fetch_failed', { type: error instanceof Error ? error.name : 'unknown' });
+    console.error(JSON.stringify({ message: 'plan_fetch_failed', type: error instanceof Error ? error.name : 'unknown' }));
     throw new Error('plan_request_failed');
   }
-  const value = await boundedJSON(response) as { studies?: unknown };
-  if (!Array.isArray(value?.studies) || value.studies.length > 2) throw new Error('Invalid scheduler plan');
-  const studies: Study[] = value.studies.map(item => {
-    if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !/^[0-9a-f-]{36}$/.test(item.id)
-        || !Array.isArray(item.windows) || item.windows.length > 2) throw new Error('Invalid study schedule');
-    const windows = (item.windows as unknown[]).map(value => {
-      if (!value || typeof value !== 'object') throw new Error('Invalid market session windows');
-      const window = value as Partial<SessionWindow>;
-      if (typeof window.start !== 'number' || typeof window.end !== 'number'
-        || !Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start >= window.end
-        || window.end - window.start > 10_800_000) throw new Error('Invalid market session windows');
-      return { start: window.start, end: window.end };
-    });
-    // The backend applies the exchange calendar and timezone. Only UTC intervals
-    // are retained, keeping minute invocations below the Free CPU allowance.
-    return { id: item.id, windows };
-  });
+  const studies = parseStudies(await boundedJSON(response));
   const plan = { fetched_at: Date.now(), studies };
   try { await env.PLAN.put('plan', JSON.stringify(plan)); }
   catch { throw new Error('plan_cache_write_failed'); }
@@ -75,18 +94,18 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health' && request.method === 'GET')
-      return new Response(JSON.stringify({ status: 'ok', configured: Boolean(env.SCHEDULER_TOKEN && env.SCHEDULER_TOKEN.length >= 32) }), { headers });
+      return Response.json({ status: 'ok', configured: configured(env) }, { headers });
     if (url.pathname !== '/sync') return new Response('Not found', { status: 404 });
     if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-    if (!authorized(request, env)) return new Response('Authentication required', { status: 401, headers });
+    if (!(await authorized(request, env))) return new Response('Authentication required', { status: 401, headers });
     if (url.search) return new Response('Query parameters are not accepted', { status: 400 });
     try {
       const plan = await refreshPlan(env);
-      return new Response(JSON.stringify({ synced: true, active_studies: plan.studies.length }), { headers });
+      return Response.json({ synced: true, active_studies: plan.studies.length }, { headers });
     } catch (error) {
       const reason = error instanceof Error && /^plan_[a-z0-9_]+$/.test(error.message) ? error.message : 'plan_sync_failed';
-      console.error('scheduler_sync_failed', { reason });
-      return new Response(JSON.stringify({ synced: false, reason }), { status: 503, headers });
+      console.error(JSON.stringify({ message: 'scheduler_sync_failed', reason }));
+      return Response.json({ synced: false, reason }, { status: 503, headers });
     }
   },
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {

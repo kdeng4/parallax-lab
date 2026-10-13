@@ -28,6 +28,7 @@
 @media(max-width:1200px){.metric-detail{font-size:9px}.metric-top{font-size:8px}.participant-name{font-size:11px}.performance-table td{font-size:11px}}
 @media(max-width:760px){.metric-detail{font-size:10px}.chart-legend button{font-size:10px}.performance-table td{font-size:11px}}
 @media(max-width:520px){.metric-detail{font-size:9px}.metric-top{font-size:8px}.chart-legend button{font-size:9px}.mode-note{font-size:8px}.event-title{font-size:10px}.event-message{font-size:9px}.page-footer{font-size:8px}}
+.footer-credit{color:#315e41;text-decoration:underline;text-underline-offset:3px}.footer-credit:hover{color:#087f70}.footer-credit:focus-visible{outline:2px solid #087f70;outline-offset:3px}
 
 .watchlist-editor{padding:22px;margin-bottom:24px}.watchlist-editor h2{font-size:18px;margin:0 0 8px}.watchlist-editor p{font-size:12px;line-height:1.6;color:#686e6a}.watchlist-editor label{display:block;font-size:12px;margin:16px 0 8px}.watchlist-controls{display:flex;gap:12px;flex-wrap:wrap}.watchlist-controls input{flex:1;min-width:180px;border:1px solid #dce2dc;border-radius:7px;padding:10px 12px;background:#fff;color:#26372f}.selection-options small{display:block;font-size:10px;color:#686e6a;margin-top:4px}
 

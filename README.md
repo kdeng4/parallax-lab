@@ -2,8 +2,13 @@
 
 **A paper-trading research workbench for controlled model and strategy experiments.**
 
-Open the [public dashboard](https://parallax.pdeng.pp.ua). This DNS-configured
-domain follows the latest production deployment.
+[Live dashboard](https://parallax.pdeng.pp.ua) ·
+[Source repository](https://github.com/kdeng4/parallax-lab) ·
+[Creator](https://kdeng4.github.io/)
+
+Cloudflare DNS points the public domain to Vercel's production deployment, and
+commits to `main` trigger automatic deployments. The public dashboard is open;
+the research workspace is owner-only.
 
 Parallax Lab runs independent trading algorithms against the same immutable market
 snapshot, records every decision and fill, and makes results comparable in one
@@ -17,8 +22,8 @@ design to live data, cloud model execution, distributed workers and production
 operations. [Architecture](docs/architecture.md) and the
 [API contract](docs/api-contract.md) document the current boundaries.
 See [validation results](docs/validation.md) for the checks executed in this environment.
-See [deployment requirements](docs/deployment.md) before connecting a Vercel
-frontend to a hosted API.
+See the [deployment guide](docs/deployment.md) for the current production setup,
+authentication and provider credentials.
 
 ## Public dashboard and owner workspace
 
@@ -167,9 +172,9 @@ do not simulate liquidity, order queues, corporate actions or broker behaviour.
 Short synthetic runs are useful for validating software, not selecting a model
 for real money. Read the API documentation for metric conventions.
 
-Dependency versions are locked in `apps/web/package-lock.json` and
-`apps/api/uv.lock`. GitHub Actions runs engine/API checks, frontend build and
-browser integration tests. The prepared default-branch rules require pull requests
-and these checks; see [repository safeguards](docs/repository-safeguards.md) for
-their application status. See the plan for the acceptance gates required
-before shared or production deployment.
+Dependency versions are locked in `apps/web/package-lock.json`,
+`apps/scheduler/package-lock.json` and `apps/api/uv.lock`. GitHub Actions runs
+engine/API checks, frontend and scheduler builds, browser integration tests and
+container builds. The prepared default-branch rules require pull requests and
+these checks; see [repository safeguards](docs/repository-safeguards.md) for
+their application status. The plan records acceptance gates for future integrations.

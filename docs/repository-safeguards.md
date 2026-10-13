@@ -46,18 +46,7 @@ and [ruleset API](https://docs.github.com/en/rest/repos/rules#create-a-repositor
 
 ## Repository Website
 
-The production public dashboard is `https://parallax.pdeng.pp.ua`. README links
-use this DNS-configured domain. The repository About Website still points to the
-older Vercel alias; the current connector has no repository-metadata update tool,
-and credential protection blocks browser editing.
-
-The repository owner can edit the About Website field to this production URL.
-With an authenticated GitHub CLI account that has Administration write permission:
-
-```bash
-gh api --method PATCH repos/kdeng4/parallax-lab \
-  -f homepage=https://parallax.pdeng.pp.ua
-```
-
-This changes repository metadata, not DNS or deployment routing. It must be
-applied separately; editing README does not update the About field.
+The production public dashboard, README and repository About Website all point
+to `https://parallax.pdeng.pp.ua`. The About Website field was updated from the
+older Vercel alias and verified on the public repository page. This repository
+metadata does not control DNS or deployment routing.

@@ -45,6 +45,6 @@ export function PublicDashboard() {
       <section className="public-activity" aria-labelledby="activity-title"><div className="public-section-title"><span className="eyebrow">THE DECISION RECORD</span><h2 id="activity-title">What happened, and when.</h2><p>Recorded paper actions and their observation times. These are simulated fills, not broker orders.</p></div>
         {snapshot.activities.length ? <ol>{snapshot.activities.map(item => <li key={item.id}><time dateTime={item.session_date}>{actionTime(item.session_date)}</time><strong>{item.agent}</strong><span className={`public-action ${item.action}`}>{item.action === 'buy' ? 'Bought' : 'Sold'}</span><span>{item.symbol}</span></li>)}</ol>
           : <p className="public-activity-empty">No published activity yet.</p>}</section></>}
-      <footer className="public-footer"><span>Parallax Lab · Paper research</span><span>Settings and source data stay in the private workspace.</span></footer>
+      <footer className="public-footer"><span>Parallax Lab · Paper research · By <a className="footer-credit" href="https://kdeng4.github.io/" target="_blank" rel="noopener noreferrer">Patrick Deng</a></span><span>Settings and source data stay in the private workspace.</span></footer>
     </main></div>;
 }

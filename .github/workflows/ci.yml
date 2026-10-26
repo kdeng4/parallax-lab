@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - name: Check release language
         run: python3 scripts/check_release_language.py
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: '0.12.23'
           python-version: '3.12'
@@ -47,7 +47,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: '0.12.23'
           python-version: '3.12'
